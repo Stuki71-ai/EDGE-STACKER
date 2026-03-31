@@ -69,10 +69,7 @@ def build_email(placed, skipped, bankroll, peak, modules_run,
 
     h = []
     h.append("<div style='font-family:Consolas,monospace;font-size:13px;line-height:1.6;color:#222'>")
-    h.append(f"<h2 style='margin:0'>EDGE STACKER &mdash; {_format_date(date_str)} ({time_label})</h2>")
-    h.append(f"<b>Bankroll:</b> ${bankroll:,.2f} | <b>Peak:</b> ${peak:,.2f} | <b>Kelly:</b> {kelly_label}<br>")
-    h.append(f"<b>Daily Exposure:</b> ${daily_exposure:,.2f} / ${daily_limit:,.2f} limit ({exposure_pct:.1f}%)<br>")
-    h.append(f"<b>Active:</b> {', '.join(modules_run)}<br><br>")
+    h.append(f"<h2 style='margin:0'>EDGE STACKER &mdash; {_format_date(date_str)}</h2><br>")
 
     module_picks = {}
     for p in placed:
@@ -90,20 +87,23 @@ def build_email(placed, skipped, bankroll, peak, modules_run,
         h.append(f"<hr style='border:1px solid #333'>")
         h.append(f"<h3 style='margin:4px 0'>{MODULE_NAMES.get(module, module.upper())}</h3>")
 
+        STAT_FULL = {"PTS": "Points", "REB": "Rebounds", "AST": "Assists"}
         for p in picks:
             star = "&#9733; " if p.grade.startswith("A") else ""
             edge_color = "#0a7e0a" if p.edge_pct >= 0.10 else "#b8860b" if p.edge_pct >= 0.06 else "#555"
             cap_note = f" ({p.staking_note})" if p.staking_note else ""
+            ctx = p.context
+            stat_abbr = ctx.get("stat", "")
+            stat_full = STAT_FULL.get(stat_abbr, stat_abbr)
+            player = ctx.get("player", "")
+            line = ctx.get("line", "")
+            # Determine direction from pick_description
+            direction = "OVER" if "OVER" in p.pick_description else "UNDER"
             h.append(f"<div style='margin:10px 0;padding:8px;background:#f5f5f5;border-left:4px solid {edge_color}'>")
-            h.append(f"<b>{star}{p.pick_description}</b> ({p.best_odds_book} {_format_odds(p.best_odds_raw)}) | <b style='color:{edge_color}'>Edge: {p.edge_pct:.1%}</b><br>")
+            h.append(f"<b>{star}{p.matchup}: {player} - {stat_full} - {direction} {line}</b> | <b style='color:{edge_color}'>Edge: {p.edge_pct:.1%}</b><br>")
             h.append(f"<b>Bet ${p.bet_size:,.2f} &rarr; Win ${p.potential_win:,.2f}</b>{cap_note} | BET BY: {p.bet_by} | Game: {p.game_time}")
             h.append("</div>")
 
-    h.append(f"<hr style='border:1px solid #333'>")
-    h.append(f"<h3 style='margin:4px 0'>SUMMARY</h3>")
-    h.append(f"Evaluated: {summary['games_evaluated']} games | Qualified: {summary['picks_qualified']} | "
-             f"<b>Placed: {summary['picks_placed']}</b> | Skipped: {summary['picks_skipped']}<br>")
-    h.append(f"<b>Wagered: ${summary['total_wagered']:,.2f}</b> | Potential win: ${summary['total_potential_win']:,.2f}")
     h.append("</div>")
 
     return "".join(h)
