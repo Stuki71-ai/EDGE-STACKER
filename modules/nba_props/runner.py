@@ -178,6 +178,7 @@ def run(today):
                 # Game time in ET, Bet-by in CET (1 hour before game)
                 bet_by_str = ""
                 game_time_str = ""
+                game_date_str = ""
                 try:
                     commence = event.get("commence_time", "")
                     if commence:
@@ -187,6 +188,7 @@ def run(today):
                         game_time_str = game_dt.astimezone(et).strftime(config.TIME_FMT)
                         bet_by_cet = game_dt.astimezone(cet) - timedelta(hours=1)
                         bet_by_str = bet_by_cet.strftime(config.BET_BY_FMT)
+                        game_date_str = game_dt.astimezone(et).strftime("%Y-%m-%d")
                 except (ValueError, TypeError):
                     pass
 
@@ -217,6 +219,7 @@ def run(today):
                         "teammate_out": teammate_name,
                         "minutes_stable": minutes_stable,
                         "vig": vig,
+                        "game_date": game_date_str,
                     },
                     bet_by=bet_by_str,
                     game_time=game_time_str,

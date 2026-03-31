@@ -15,7 +15,9 @@ def build_output(placed, skipped, bankroll, peak, modules_run,
         dict with full output structure
     """
     today = datetime.now(timezone(timedelta(hours=-5)))
-    date_str = today.strftime("%Y-%m-%d")
+    # Use game date from picks if available (games may be tomorrow)
+    game_date = _extract_game_date(placed)
+    date_str = game_date if game_date else today.strftime("%Y-%m-%d")
 
     # Determine morning/afternoon
     hour = today.hour
@@ -165,6 +167,15 @@ def _skipped_to_dict(p):
         "grade": p.grade,
         "staking_note": p.staking_note,
     }
+
+
+def _extract_game_date(picks):
+    """Get the game date from the first pick's context."""
+    for p in picks:
+        gd = p.context.get("game_date", "")
+        if gd:
+            return gd
+    return ""
 
 
 def _format_odds(odds):
