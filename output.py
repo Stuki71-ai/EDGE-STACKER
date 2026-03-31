@@ -7,7 +7,8 @@ import config
 logger = logging.getLogger("edge_stacker")
 
 
-def build_output(placed, skipped, bankroll, peak, modules_run, json_only=False, games_evaluated=0):
+def build_output(placed, skipped, bankroll, peak, modules_run,
+                 games_evaluated=0, prior_exposure=0.0):
     """Build JSON and email output.
 
     Returns:
@@ -22,7 +23,8 @@ def build_output(placed, skipped, bankroll, peak, modules_run, json_only=False, 
     run_time = today.strftime(config.TIME_FMT)
 
     daily_limit = bankroll * 0.08
-    daily_exposure = sum(p.bet_size for p in placed)
+    current_run_exposure = sum(p.bet_size for p in placed)
+    daily_exposure = prior_exposure + current_run_exposure
 
     total_wagered = sum(p.bet_size for p in placed)
     total_potential = sum(p.potential_win for p in placed)
@@ -63,7 +65,7 @@ def build_email(placed, skipped, bankroll, peak, modules_run,
     # Detect drawdown
     dd = (peak - bankroll) / peak if peak > 0 else 0
     km = KELLY_MULTIPLIER_DRAWDOWN if dd >= 0.20 else KELLY_MULTIPLIER
-    kelly_label = f"{'Eighth' if km < 0.2 else 'Quarter'} ({km})"
+    kelly_label = f"{'Eighth' if km == KELLY_MULTIPLIER_DRAWDOWN else 'Quarter'} ({km})"
 
     exposure_pct = (daily_exposure / daily_limit * 100) if daily_limit > 0 else 0
 
@@ -125,10 +127,17 @@ def build_email(placed, skipped, bankroll, peak, modules_run,
     return "\n".join(lines)
 
 
-def output_empty(message):
+def output_empty(message, bankroll=0.0, peak=0.0, modules_run=None):
     """Output for no-picks scenario."""
+    now = datetime.now(timezone(timedelta(hours=-5)))
     output = {
-        "date": datetime.now(timezone(timedelta(hours=-5))).strftime("%Y-%m-%d"),
+        "date": now.strftime("%Y-%m-%d"),
+        "run_time": now.strftime(config.TIME_FMT),
+        "bankroll": bankroll,
+        "peak_bankroll": peak,
+        "daily_exposure": 0.0,
+        "daily_limit": round(bankroll * 0.08, 2),
+        "modules_run": modules_run or [],
         "picks": [],
         "skipped": [],
         "summary": {
@@ -200,7 +209,8 @@ def _module_context_line(p):
     elif p.module == "ncaaf_bowls":
         return f"Bowl +{ctx.get('spread', '?')}"
     elif p.module == "ncaab_kenpom":
-        return f"KenPom +{ctx.get('divergence', '?'):.1f} divergence"
+        div = ctx.get('divergence', 0)
+        return f"KenPom +{div:.1f} divergence"
     elif p.module == "ncaab_conf_tourney":
         return f"{ctx.get('conference', '?')} {ctx.get('round', '?').replace('_', ' ').title()}"
     return ""

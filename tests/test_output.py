@@ -137,12 +137,31 @@ class TestBuildOutput:
         assert parsed["bankroll"] == 5000
 
 
+    def test_daily_exposure_includes_prior(self):
+        placed = [_make_placed_pick()]
+        output = build_output(placed, [], 5000, 5200, ["ncaab_conf_tourney"],
+                              prior_exposure=85.0)
+        # daily_exposure should be prior (85) + current run (150)
+        assert output["daily_exposure"] == 235.0
+
+
 class TestOutputEmpty:
     def test_output_empty_prints_json(self, capsys):
-        output_empty("No active modules today.")
+        output_empty("No active modules today.", 5000, 5000, ["nba_props"])
         captured = capsys.readouterr()
         data = json.loads(captured.out)
         assert data["picks"] == []
         assert data["skipped"] == []
         assert "email_body" in data
         assert "No qualifying picks" in data["email_body"]
+
+    def test_output_empty_has_all_schema_fields(self, capsys):
+        output_empty("Test.", 5000, 5200, ["nba_props"])
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert "run_time" in data
+        assert data["bankroll"] == 5000
+        assert data["peak_bankroll"] == 5200
+        assert data["daily_exposure"] == 0.0
+        assert data["daily_limit"] == 400.0
+        assert data["modules_run"] == ["nba_props"]

@@ -149,8 +149,8 @@ def load_daily_exposure(today):
         return 0.0
 
 
-def save_daily_exposure(today, total_exposure, modules):
-    """Save updated daily exposure."""
+def save_daily_exposure(today, total_exposure, placed_picks):
+    """Save updated daily exposure with module breakdown."""
     try:
         with open(config.DAILY_STATE_PATH, "r") as f:
             state = json.load(f)
@@ -161,6 +161,13 @@ def save_daily_exposure(today, total_exposure, modules):
 
     state["total_exposure"] = round(total_exposure, 2)
     state["date"] = today.isoformat()
+
+    # Update module-level exposure breakdown
+    mod_exp = state.get("module_exposure", {})
+    for p in placed_picks:
+        mod_exp[p.module] = round(mod_exp.get(p.module, 0.0) + p.bet_size, 2)
+    state["module_exposure"] = mod_exp
+    state["picks_placed"] = state.get("picks_placed", 0) + len(placed_picks)
 
     with open(config.DAILY_STATE_PATH, "w") as f:
         json.dump(state, f, indent=2)
@@ -228,7 +235,8 @@ def main():
         modules = active_modules(today)
 
     if not modules:
-        output_empty("No active modules today.")
+        bankroll, peak, _ = load_bankroll()
+        output_empty("No active modules today.", bankroll, peak, modules)
         sys.exit(0)
 
     logger.info(f"EDGE STACKER run: {today.isoformat()} | modules: {modules}")
@@ -250,7 +258,7 @@ def main():
             continue
 
     if not all_picks:
-        output_empty("Active modules ran but no qualifying picks found.")
+        output_empty("Active modules ran but no qualifying picks found.", bankroll, peak, modules)
         sys.exit(2 if had_errors else 0)
 
     # Staking
@@ -263,10 +271,11 @@ def main():
 
     # Update daily exposure
     new_exposure = sum(p.bet_size for p in placed)
-    save_daily_exposure(today, prior_exposure + new_exposure, modules)
+    save_daily_exposure(today, prior_exposure + new_exposure, placed)
 
     # Output
-    output = build_output(placed, skipped, bankroll, peak, modules)
+    output = build_output(placed, skipped, bankroll, peak, modules,
+                          prior_exposure=prior_exposure)
     print(json.dumps(output, indent=2))
 
     exit_code = 2 if had_errors else 0
