@@ -18,9 +18,9 @@ def get_team_defensive_ratings(season="2025-26"):
 
     for param_name in param_names:
         delay = 1.0
-        for attempt in range(config.NBA_API_RETRIES):
+        for attempt in range(1):  # Single attempt — nba_api often blocked from VPS
             try:
-                stats = LeagueDashTeamStats(season=season, **{param_name: "Advanced"})
+                stats = LeagueDashTeamStats(season=season, timeout=10, **{param_name: "Advanced"})
                 time.sleep(config.NBA_API_DELAY)
 
                 df = stats.get_data_frames()[0]
@@ -55,7 +55,7 @@ def get_player_game_log(player_id, season="2025-26", last_n=10):
     """
     from nba_api.stats.endpoints import PlayerGameLog
 
-    retries = config.NBA_API_RETRIES
+    retries = 1  # Single attempt — nba_api often blocked from VPS IPs
     delay = 1.0
 
     for attempt in range(retries):
@@ -63,7 +63,7 @@ def get_player_game_log(player_id, season="2025-26", last_n=10):
             log = PlayerGameLog(
                 player_id=player_id,
                 season=season,
-                timeout=10,
+                timeout=5,
             )
             time.sleep(config.NBA_API_DELAY)
 
