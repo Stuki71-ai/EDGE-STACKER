@@ -33,7 +33,8 @@ def get_player_gamelog(espn_player_id, last_n=10):
     for i, lbl in enumerate(labels):
         idx[lbl] = i
 
-    games = []
+    # Collect ALL regular season games across all monthly categories
+    all_games = []
     for season_type in data.get("seasonTypes", []):
         if "Regular" not in season_type.get("displayName", ""):
             continue
@@ -43,7 +44,6 @@ def get_player_gamelog(espn_player_id, last_n=10):
                 if len(stats) < len(labels):
                     continue
 
-                # Get team ID from event data
                 event_id = event.get("eventId", "") or event.get("id", "")
                 event_info = data.get("events", {}).get(str(event_id), {})
                 team_id = event_info.get("team", {}).get("id", "")
@@ -55,9 +55,10 @@ def get_player_gamelog(espn_player_id, last_n=10):
                     "MIN": float(stats[idx.get("MIN", 0)]),
                     "TEAM_ID": str(team_id),
                 }
-                games.append(game)
+                all_games.append(game)
 
-    return games[:last_n]
+    # Games are ordered most recent first — take last N
+    return all_games[:last_n]
 
 
 def get_team_defensive_stats():
