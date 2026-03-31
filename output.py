@@ -68,8 +68,8 @@ def build_email(placed, skipped, bankroll, peak, modules_run,
     exposure_pct = (daily_exposure / daily_limit * 100) if daily_limit > 0 else 0
 
     h = []
+    date_eu = f"{date_str[8:10]}.{date_str[5:7]}.{date_str[:4]}"
     h.append("<div style='font-family:Consolas,monospace;font-size:13px;line-height:1.6;color:#222'>")
-    h.append(f"<h2 style='margin:0'>EDGE STACKER &mdash; {_format_date(date_str)}</h2><br>")
 
     module_picks = {}
     for p in placed:
