@@ -63,6 +63,7 @@ def get_player_game_log(player_id, season="2025-26", last_n=10):
             log = PlayerGameLog(
                 player_id=player_id,
                 season=season,
+                timeout=10,
             )
             time.sleep(config.NBA_API_DELAY)
 

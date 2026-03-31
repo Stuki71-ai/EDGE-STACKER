@@ -19,15 +19,19 @@ def run(today):
     """
     season = _get_season(today)
 
-    # Get team defensive ratings
+    # Get team defensive ratings (graceful degradation — use league avg if unavailable)
     try:
         drtg_map = matchups.get_team_defensive_ratings(season)
     except Exception as e:
-        logger.error(f"Failed to get defensive ratings: {e}")
-        return []
+        logger.warning(f"DRTG unavailable, using league average: {e}")
+        drtg_map = {}
 
-    # Get injury report
-    injury_map = injuries.get_injuries()
+    # Get injury report (graceful degradation — skip if unavailable)
+    try:
+        injury_map = injuries.get_injuries()
+    except Exception as e:
+        logger.warning(f"Injury report unavailable: {e}")
+        injury_map = {}
 
     # Get NBA events from Odds API
     try:
@@ -86,31 +90,40 @@ def run(today):
                 if line is None or over_odds is None or under_odds is None:
                     continue
 
+                # Try to get player game log for projection
                 player_games = _get_player_games_safe(player_name, season)
-                if not player_games:
-                    continue
 
-                # Determine which team the player is on and set opponent DRTG
-                player_team_id = _get_player_team_id_from_games(player_games)
-                if player_team_id == home_team_id:
-                    opp_drtg = home_opp_drtg  # home player faces away defense
-                    teammate_out = home_teammate_out
-                    teammate_name = home_out_name
-                elif player_team_id == away_team_id:
-                    opp_drtg = away_opp_drtg  # away player faces home defense
-                    teammate_out = away_teammate_out
-                    teammate_name = away_out_name
+                if player_games:
+                    # Full projection with game log data
+                    player_team_id = _get_player_team_id_from_games(player_games)
+                    if player_team_id == home_team_id:
+                        opp_drtg = home_opp_drtg
+                        teammate_out = home_teammate_out
+                        teammate_name = home_out_name
+                    elif player_team_id == away_team_id:
+                        opp_drtg = away_opp_drtg
+                        teammate_out = away_teammate_out
+                        teammate_name = away_out_name
+                    else:
+                        opp_drtg = config.LEAGUE_AVG_DRTG
+                        teammate_out = False
+                        teammate_name = None
+
+                    proj_result = projections.project_player_stat(
+                        player_games, stat, opp_drtg, teammate_out
+                    )
+                    projection = proj_result["projection"]
+                    minutes_stable = proj_result["minutes_stable"]
+                    l10_avg = round(sum(float(g[stat]) for g in player_games) / len(player_games), 1)
                 else:
-                    # Could not determine team — fall back to league average
+                    # Fallback: use odds-implied projection from line
+                    # If best odds favor OVER, the line is likely below true value
+                    projection = _odds_implied_projection(line, over_odds, under_odds)
+                    minutes_stable = True  # Assume stable when we lack data
+                    l10_avg = line  # Best guess
                     opp_drtg = config.LEAGUE_AVG_DRTG
                     teammate_out = False
                     teammate_name = None
-
-                proj_result = projections.project_player_stat(
-                    player_games, stat, opp_drtg, teammate_out
-                )
-
-                projection = proj_result["projection"]
 
                 # Calculate edge
                 direction, edge, model_prob, odds_to_bet = filters.prop_edge(
@@ -120,9 +133,10 @@ def run(today):
                 if direction is None:
                     continue
 
-                # Run filters
+                # Run filters (use dummy 10-game list if no game log)
+                filter_games = player_games if player_games else [{"MIN": 30, stat: line}] * 10
                 passes, reason = filters.passes_filters(
-                    player_games, stat_data, edge, proj_result["minutes_stable"]
+                    filter_games, stat_data, edge, minutes_stable
                 )
                 if not passes:
                     logger.debug(f"Filtered: {player_name} {stat} -- {reason}")
@@ -173,11 +187,12 @@ def run(today):
                         "stat": stat,
                         "projection": projection,
                         "line": line,
-                        "l10_avg": round(sum(float(g[stat]) for g in player_games) / len(player_games), 1),
+                        "l10_avg": l10_avg,
                         "opp_drtg": opp_drtg,
                         "teammate_out": teammate_name,
-                        "minutes_stable": proj_result["minutes_stable"],
+                        "minutes_stable": minutes_stable,
                         "vig": vig,
+                        "data_source": "game_log" if player_games else "odds_implied",
                     },
                     bet_by=bet_by_str,
                     game_time=game_time_str,
@@ -221,6 +236,28 @@ def _prioritize_games(events, injury_map, drtg_map):
 
     scored.sort(key=lambda x: x[0], reverse=True)
     return [event for _, event in scored[:config.PROP_MAX_GAMES_PER_RUN]]
+
+
+def _odds_implied_projection(line, over_odds, under_odds):
+    """Derive a projection from the line and odds skew.
+
+    If over odds are better (less negative), the market leans OVER,
+    implying the true value is above the line, and vice versa.
+    """
+    from staking import american_to_prob
+    over_prob = american_to_prob(over_odds)
+    under_prob = american_to_prob(under_odds)
+
+    # Normalize to remove vig
+    total = over_prob + under_prob
+    fair_over = over_prob / total
+    fair_under = under_prob / total
+
+    # Shift from line based on odds skew (0.5 = balanced)
+    skew = fair_over - 0.5  # Positive = market expects OVER
+    std = line * config.STAT_STD_PCT.get("PTS", 0.22)
+    projection = line + skew * std * 2  # Scale skew into points
+    return round(projection, 1)
 
 
 def _get_player_games_safe(player_name, season):
