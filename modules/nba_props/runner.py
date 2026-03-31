@@ -112,6 +112,10 @@ def run(today):
                 if _is_player_injured(player_name, injury_map):
                     continue
 
+                # Skip players not in our roster cache (no ESPN ID = no gamelog)
+                if not espn_nba.find_espn_player_id(player_name):
+                    continue
+
                 # Fetch player game log from ESPN
                 player_games = _get_player_games_espn(player_name)
 
@@ -295,12 +299,20 @@ def _is_player_injured(player_name, injury_map):
     return False
 
 
+_gamelog_cache = {}
+
+
 def _get_player_games_espn(player_name):
-    """Get player game log via ESPN API."""
+    """Get player game log via ESPN API (cached per player per run)."""
+    if player_name in _gamelog_cache:
+        return _gamelog_cache[player_name]
     espn_id = espn_nba.find_espn_player_id(player_name)
     if not espn_id:
+        _gamelog_cache[player_name] = []
         return []
-    return espn_nba.get_player_gamelog(espn_id, last_n=10)
+    games = espn_nba.get_player_gamelog(espn_id, last_n=10)
+    _gamelog_cache[player_name] = games
+    return games
 
 
 def _resolve_team_id(odds_api_team_name):
