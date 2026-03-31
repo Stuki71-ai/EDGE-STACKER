@@ -1,4 +1,14 @@
 {
+  "P1FCU Kibbie Dome": {
+    "lat": 46.7262,
+    "lon": -117.0142,
+    "dome": true
+  },
+  "Kibbie Dome": {
+    "lat": 46.7262,
+    "lon": -117.0142,
+    "dome": true
+  },
   "AT&T Stadium": {
     "lat": 32.7473,
     "lon": -97.0945,

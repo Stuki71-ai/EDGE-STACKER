@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import platform
 
 logger = logging.getLogger("edge_stacker")
 
@@ -73,6 +74,9 @@ KENPOM_HCA_NON_CONFERENCE = 3.5
 
 # ── NCAAB Conf Tournament ──
 CONF_TOURNEY_MIN_ATS = 0.60
+
+# ── Cross-platform time formatting ──
+TIME_FMT = "%#I:%M %p ET" if platform.system() == "Windows" else "%-I:%M %p ET"
 
 # ── Default Bankroll ──
 DEFAULT_BANKROLL = 5000.00

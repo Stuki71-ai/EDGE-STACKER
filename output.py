@@ -2,6 +2,7 @@ import json
 import logging
 from datetime import datetime, timezone, timedelta
 from dataclasses import asdict
+import config
 
 logger = logging.getLogger("edge_stacker")
 
@@ -18,7 +19,7 @@ def build_output(placed, skipped, bankroll, peak, modules_run, json_only=False, 
     # Determine morning/afternoon
     hour = today.hour
     time_label = "Morning" if hour < 14 else "Afternoon"
-    run_time = today.strftime("%-I:%M %p ET")
+    run_time = today.strftime(config.TIME_FMT)
 
     daily_limit = bankroll * 0.08
     daily_exposure = sum(p.bet_size for p in placed)

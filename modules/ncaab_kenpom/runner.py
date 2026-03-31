@@ -60,26 +60,14 @@ def run(today):
         if kp_margin is None:
             continue
 
-        # Get market spread for home team
-        # Find home team in spread data
-        home_spread = None
-        for team_name, team_data in spread_data.items():
-            # Match team names (Odds API names)
-            if team_data["spread"] < 0:
-                # This is the favorite
-                pass
-            # We need to identify which is the home team
-            # Use the spread sign: find the home team's spread
-            pass
+        # Match ESPN team names to Odds API names in spread data
+        from shared.name_normalizer import espn_to_odds
+        h_odds = espn_to_odds(home_name, "ncaab")
+        a_odds = espn_to_odds(away_name, "ncaab")
 
-        # Simpler approach: get home team spread from odds data
         home_odds_name = None
         away_odds_name = None
         for team_name in spread_data:
-            # Try to match to home/away
-            from shared.name_normalizer import espn_to_odds
-            h_odds = espn_to_odds(home_name, "ncaab")
-            a_odds = espn_to_odds(away_name, "ncaab")
             if team_name == h_odds:
                 home_odds_name = team_name
             elif team_name == a_odds:
@@ -132,9 +120,9 @@ def run(today):
             game_dt = datetime.fromisoformat(game["date"].replace("Z", "+00:00"))
             et_offset = timezone(timedelta(hours=-5))
             game_et = game_dt.astimezone(et_offset)
-            game_time_str = game_et.strftime("%-I:%M %p ET")
+            game_time_str = game_et.strftime(config.TIME_FMT)
             bet_by_et = game_et - timedelta(hours=1)
-            bet_by_str = bet_by_et.strftime("%-I:%M %p ET")
+            bet_by_str = bet_by_et.strftime(config.TIME_FMT)
         except (ValueError, TypeError):
             pass
 

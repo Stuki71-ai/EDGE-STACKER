@@ -52,9 +52,9 @@ def run(today):
             game_dt = datetime.fromisoformat(game["date"].replace("Z", "+00:00"))
             et_offset = timezone(timedelta(hours=-5))
             game_et = game_dt.astimezone(et_offset)
-            game_time_str = game_et.strftime("%-I:%M %p ET")
+            game_time_str = game_et.strftime(config.TIME_FMT)
             bet_by_et = game_et - timedelta(minutes=30)
-            bet_by_str = bet_by_et.strftime("%-I:%M %p ET")
+            bet_by_str = bet_by_et.strftime(config.TIME_FMT)
         except (ValueError, TypeError):
             pass
 

@@ -68,9 +68,9 @@ def run(today):
             # Convert to ET (UTC-5 / UTC-4 depending on DST, approximate with UTC-5)
             et_offset = timezone(timedelta(hours=-5))
             game_et = game_dt.astimezone(et_offset)
-            game_time_str = game_et.strftime("%-I:%M %p ET")
+            game_time_str = game_et.strftime(config.TIME_FMT)
             bet_by_et = game_et - timedelta(hours=2)
-            bet_by_str = bet_by_et.strftime("%-I:%M %p ET")
+            bet_by_str = bet_by_et.strftime(config.TIME_FMT)
         except (ValueError, TypeError):
             pass
 
