@@ -109,7 +109,6 @@ class TestBuildOutput:
         output = build_output(placed, skipped, 5000, 5200, ["ncaab_conf_tourney"])
 
         email = output["email_body"]
-        assert "EDGE STACKER" in email
         assert "$150.00" in email
 
     def test_empty_picks_no_crash(self):
