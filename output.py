@@ -84,7 +84,6 @@ def build_email(placed, skipped, bankroll, peak, modules_run,
     }
 
     for module, picks in module_picks.items():
-        h.append(f"<hr style='border:1px solid #333'>")
         h.append(f"<h3 style='margin:4px 0'>{MODULE_NAMES.get(module, module.upper())}</h3>")
 
         STAT_FULL = {"PTS": "Points", "REB": "Rebounds", "AST": "Assists"}
