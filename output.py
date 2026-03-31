@@ -69,14 +69,7 @@ def build_email(placed, skipped, bankroll, peak, modules_run,
     kelly_label = f"{'Eighth' if km == KELLY_MULTIPLIER_DRAWDOWN else 'Quarter'} ({km})"
     exposure_pct = (daily_exposure / daily_limit * 100) if daily_limit > 0 else 0
 
-    h = []
-    date_eu = f"{date_str[8:10]}.{date_str[5:7]}.{date_str[:4]}"
-    h.append("<div style='font-family:Consolas,monospace;font-size:13px;line-height:1.6;color:#222'>")
-
-    module_picks = {}
-    for p in placed:
-        module_picks.setdefault(p.module, []).append(p)
-
+    STAT_FULL = {"PTS": "Points", "REB": "Rebounds", "AST": "Assists"}
     MODULE_NAMES = {
         "ncaaf_weather": "NCAAF WEATHER UNDERS",
         "nba_props": "NBA PLAYER PROPS",
@@ -85,25 +78,27 @@ def build_email(placed, skipped, bankroll, peak, modules_run,
         "ncaab_conf_tourney": "NCAAB CONFERENCE TOURNAMENT",
     }
 
-    for module, picks in module_picks.items():
-        h.append(f"<h3 style='margin:4px 0'>{MODULE_NAMES.get(module, module.upper())}</h3>")
+    h = []
+    h.append("<div style='font-family:Consolas,monospace;font-size:13px;line-height:1.6;color:#222'>")
 
-        STAT_FULL = {"PTS": "Points", "REB": "Rebounds", "AST": "Assists"}
+    module_picks = {}
+    for p in placed:
+        module_picks.setdefault(p.module, []).append(p)
+
+    for module, picks in module_picks.items():
+        h.append(f"<b>{MODULE_NAMES.get(module, module.upper())}</b><br><br>")
+
         for p in picks:
             star = "&#9733; " if p.grade.startswith("A") else ""
-            edge_color = "#0a7e0a" if p.edge_pct >= 0.10 else "#b8860b" if p.edge_pct >= 0.06 else "#555"
-            cap_note = ""
             ctx = p.context
-            stat_abbr = ctx.get("stat", "")
-            stat_full = STAT_FULL.get(stat_abbr, stat_abbr)
+            stat_full = STAT_FULL.get(ctx.get("stat", ""), ctx.get("stat", ""))
             player = ctx.get("player", "")
             line = ctx.get("line", "")
-            # Determine direction from pick_description
             direction = "OVER" if "OVER" in p.pick_description else "UNDER"
-            h.append(f"<div style='margin:10px 0;padding:8px;background:#f5f5f5;border-left:4px solid {edge_color}'>")
-            h.append(f"<b>{star}{p.matchup}: {player} - {stat_full} - {direction} {line}</b> | <b style='color:{edge_color}'>Edge: {p.edge_pct:.1%}</b><br>")
-            h.append(f"<b>Bet ${p.bet_size:,.2f} &rarr; Win ${p.potential_win:,.2f}</b>{cap_note} | BET BY: {p.bet_by} | Game: {p.game_time}")
-            h.append("</div>")
+
+            h.append(f"{star}{p.matchup}:<br>")
+            h.append(f"{player} - {stat_full} - {direction} {line}<br>")
+            h.append(f"Bet ${p.bet_size:,.2f} | Game: {p.game_time}<br><br>")
 
     h.append("</div>")
 

@@ -1,6 +1,6 @@
 {
-  "bankroll": 5000.00,
-  "peak_bankroll": 5000.00,
+  "bankroll": 500.00,
+  "peak_bankroll": 500.00,
   "in_drawdown": false,
   "last_updated": "2026-03-31",
   "module_pnl": {

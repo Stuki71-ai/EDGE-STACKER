@@ -92,7 +92,7 @@ CET_OFFSET_HOURS = 1  # UTC+1 (CET), use 2 for CEST
 ET_OFFSET_HOURS = -5  # UTC-5 (ET)
 
 # ── Default Bankroll ──
-DEFAULT_BANKROLL = 5000.00
+DEFAULT_BANKROLL = 500.00
 
 
 def load_static_json(filename):

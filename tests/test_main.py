@@ -79,8 +79,8 @@ class TestBankrollState:
         # Point to nonexistent file
         monkeypatch.setattr("config.BANKROLL_STATE_PATH", str(tmp_path / "nonexistent.json"))
         bankroll, peak, dd = load_bankroll()
-        assert bankroll == 5000.00
-        assert peak == 5000.00
+        assert bankroll == 500.00
+        assert peak == 500.00
         assert dd is False
 
     def test_load_existing(self, tmp_path, monkeypatch):
