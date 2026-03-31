@@ -1,0 +1,15 @@
+{
+  "bankroll": 5000.00,
+  "peak_bankroll": 5000.00,
+  "in_drawdown": false,
+  "last_updated": "2026-03-31",
+  "module_pnl": {
+    "ncaaf_weather": 0.0,
+    "nba_props": 0.0,
+    "ncaaf_bowls": 0.0,
+    "ncaab_kenpom": 0.0,
+    "ncaab_conf_tourney": 0.0
+  },
+  "total_bets": 0,
+  "total_wagered": 0.0
+}

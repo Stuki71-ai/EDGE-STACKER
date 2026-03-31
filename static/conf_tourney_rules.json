@@ -1,0 +1,38 @@
+{
+  "ACC": {
+    "semifinals": {"dog_ats_pct": 0.781, "sample": 32, "years": "2007-2025", "min_sample": true}
+  },
+  "Big 12": {
+    "opening_round": {"dog_ats_pct": 0.809, "sample": 21, "years": "2015-2025", "min_sample": true}
+  },
+  "NEC": {
+    "championship": {"dog_ats_pct": 0.842, "sample": 19, "years": "2006-2025", "min_sample": true}
+  },
+  "OVC": {
+    "championship": {"dog_ats_pct": 0.867, "sample": 15, "years": "2010-2025", "min_sample": true}
+  },
+  "Patriot League": {
+    "championship": {"dog_ats_pct": 0.750, "sample": 20, "years": "2005-2025", "min_sample": true}
+  },
+  "Big East": {
+    "opening_round": {"dog_ats_pct": 0.714, "sample": 21, "years": "2013-2025", "min_sample": true}
+  },
+  "SEC": {
+    "opening_round": {"dog_ats_pct": 0.688, "sample": 16, "years": "2013-2025", "min_sample": true}
+  },
+  "MAAC": {
+    "championship": {"dog_ats_pct": 0.700, "sample": 20, "years": "2005-2025", "min_sample": true}
+  },
+  "Southland": {
+    "championship": {"dog_ats_pct": 0.733, "sample": 15, "years": "2010-2025", "min_sample": true}
+  },
+  "America East": {
+    "championship": {"dog_ats_pct": 0.650, "sample": 20, "years": "2005-2025", "min_sample": true}
+  },
+  "Horizon League": {
+    "championship": {"dog_ats_pct": 0.667, "sample": 18, "years": "2007-2025", "min_sample": true}
+  },
+  "Summit League": {
+    "championship": {"dog_ats_pct": 0.688, "sample": 16, "years": "2009-2025", "min_sample": true}
+  }
+}

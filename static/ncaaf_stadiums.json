@@ -1,0 +1,752 @@
+{
+  "AT&T Stadium": {
+    "lat": 32.7473,
+    "lon": -97.0945,
+    "dome": true
+  },
+  "Acrisure Bounce House": {
+    "lat": 28.6076,
+    "lon": -81.1919,
+    "dome": false
+  },
+  "Acrisure Stadium": {
+    "lat": 40.4468,
+    "lon": -80.0158,
+    "dome": false
+  },
+  "Aggie Memorial Stadium": {
+    "lat": 32.3481,
+    "lon": -106.7341,
+    "dome": false
+  },
+  "Alamodome": {
+    "lat": 29.4169,
+    "lon": -98.479,
+    "dome": true
+  },
+  "Albertsons Stadium": {
+    "lat": 43.6026,
+    "lon": -116.1974,
+    "dome": false
+  },
+  "Allegacy Federal Credit Union Stadium": {
+    "lat": 36.1312,
+    "lon": -80.2579,
+    "dome": false
+  },
+  "Allegiant Stadium": {
+    "lat": 36.0909,
+    "lon": -115.1833,
+    "dome": true
+  },
+  "Allen E. Paulson Stadium": {
+    "lat": 32.4215,
+    "lon": -81.7826,
+    "dome": false
+  },
+  "Alumni Stadium": {
+    "lat": 42.3355,
+    "lon": -71.1685,
+    "dome": false
+  },
+  "Amon G. Carter Stadium": {
+    "lat": 32.7099,
+    "lon": -97.3684,
+    "dome": false
+  },
+  "Apogee Stadium": {
+    "lat": 33.2151,
+    "lon": -97.1499,
+    "dome": false
+  },
+  "Arizona Stadium": {
+    "lat": 32.2284,
+    "lon": -110.9489,
+    "dome": false
+  },
+  "Autzen Stadium": {
+    "lat": 44.0582,
+    "lon": -123.0677,
+    "dome": false
+  },
+  "Bagwell Field at Dowdy-Ficklen Stadium": {
+    "lat": 35.6049,
+    "lon": -77.3655,
+    "dome": false
+  },
+  "Beaver Stadium": {
+    "lat": 40.8122,
+    "lon": -77.8562,
+    "dome": false
+  },
+  "Ben Hill Griffin Stadium": {
+    "lat": 29.65,
+    "lon": -82.3486,
+    "dome": false
+  },
+  "Bill Snyder Family Stadium": {
+    "lat": 39.2019,
+    "lon": -96.5935,
+    "dome": false
+  },
+  "Bobby Dodd Stadium": {
+    "lat": 33.7723,
+    "lon": -84.3927,
+    "dome": false
+  },
+  "Bobcat Stadium": {
+    "lat": 29.8882,
+    "lon": -97.9291,
+    "dome": false
+  },
+  "Boone Pickens Stadium": {
+    "lat": 36.1258,
+    "lon": -97.0669,
+    "dome": false
+  },
+  "Bowers Stadium": {
+    "lat": 30.712,
+    "lon": -95.553,
+    "dome": false
+  },
+  "Bridgeforth Stadium": {
+    "lat": 38.4383,
+    "lon": -78.8738,
+    "dome": false
+  },
+  "Brooks Stadium": {
+    "lat": 33.7932,
+    "lon": -79.0179,
+    "dome": false
+  },
+  "Bryant-Denny Stadium": {
+    "lat": 33.2084,
+    "lon": -87.5504,
+    "dome": false
+  },
+  "Bulldog Stadium": {
+    "lat": 36.8103,
+    "lon": -119.7563,
+    "dome": false
+  },
+  "Burgess-Snow Field at JSU Stadium": {
+    "lat": 33.8152,
+    "lon": -85.7671,
+    "dome": false
+  },
+  "CEFCU Stadium": {
+    "lat": 37.3206,
+    "lon": -121.8694,
+    "dome": false
+  },
+  "Caesars Superdome": {
+    "lat": 29.9511,
+    "lon": -90.0812,
+    "dome": true
+  },
+  "Cajun Field": {
+    "lat": 30.2126,
+    "lon": -92.0209,
+    "dome": false
+  },
+  "California Memorial Stadium": {
+    "lat": 37.8709,
+    "lon": -122.2507,
+    "dome": false
+  },
+  "Camp Randall Stadium": {
+    "lat": 43.07,
+    "lon": -89.412,
+    "dome": false
+  },
+  "Camping World Stadium": {
+    "lat": 28.5392,
+    "lon": -81.4029,
+    "dome": false
+  },
+  "Canvas Stadium": {
+    "lat": 40.5761,
+    "lon": -105.0842,
+    "dome": false
+  },
+  "Cardinal Stadium": {
+    "lat": 38.2125,
+    "lon": -85.7588,
+    "dome": false
+  },
+  "Carter-Finley Stadium": {
+    "lat": 35.8018,
+    "lon": -78.7197,
+    "dome": false
+  },
+  "Centennial Bank Stadium": {
+    "lat": 35.8417,
+    "lon": -90.6813,
+    "dome": false
+  },
+  "Center Parc Credit Union Stadium": {
+    "lat": 33.7407,
+    "lon": -84.39,
+    "dome": false
+  },
+  "Clarence T.C. Ching Athletics Complex": {
+    "lat": 21.2955,
+    "lon": -157.8183,
+    "dome": false
+  },
+  "Cotton Bowl": {
+    "lat": 32.7781,
+    "lon": -96.7592,
+    "dome": false
+  },
+  "DKR-Texas Memorial Stadium": {
+    "lat": 30.2836,
+    "lon": -97.7325,
+    "dome": false
+  },
+  "David Booth Kansas Memorial Stadium": {
+    "lat": 38.9584,
+    "lon": -95.2527,
+    "dome": false
+  },
+  "Davis Wade Stadium": {
+    "lat": 33.4563,
+    "lon": -88.7926,
+    "dome": false
+  },
+  "Delaware Stadium": {
+    "lat": 39.6622,
+    "lon": -75.752,
+    "dome": false
+  },
+  "Dix Stadium": {
+    "lat": 41.1473,
+    "lon": -81.3381,
+    "dome": false
+  },
+  "Doak Campbell Stadium": {
+    "lat": 30.4382,
+    "lon": -84.304,
+    "dome": false
+  },
+  "Donald W. Reynolds Razorback Stadium": {
+    "lat": 36.0684,
+    "lon": -94.1798,
+    "dome": false
+  },
+  "Doyt L. Perry Stadium": {
+    "lat": 41.3787,
+    "lon": -83.6313,
+    "dome": false
+  },
+  "EverBank Stadium": {
+    "lat": 30.3239,
+    "lon": -81.6373,
+    "dome": false
+  },
+  "FAU Stadium": {
+    "lat": 26.3741,
+    "lon": -80.1016,
+    "dome": false
+  },
+  "FIU Stadium": {
+    "lat": 25.7561,
+    "lon": -80.3755,
+    "dome": false
+  },
+  "Falcon Stadium": {
+    "lat": 38.9979,
+    "lon": -104.8441,
+    "dome": false
+  },
+  "Faurot Field at Memorial Stadium": {
+    "lat": 38.9357,
+    "lon": -92.3331,
+    "dome": false
+  },
+  "Fifth Third Bank Stadium": {
+    "lat": 34.0243,
+    "lon": -84.5819,
+    "dome": false
+  },
+  "FirstBank Stadium": {
+    "lat": 36.1443,
+    "lon": -86.8094,
+    "dome": false
+  },
+  "Floyd Stadium": {
+    "lat": 35.8505,
+    "lon": -86.3687,
+    "dome": false
+  },
+  "Folsom Field": {
+    "lat": 40.0093,
+    "lon": -105.267,
+    "dome": false
+  },
+  "Ford Field": {
+    "lat": 42.34,
+    "lon": -83.0456,
+    "dome": true
+  },
+  "Frank Howard Field at Memorial Stadium": {
+    "lat": 34.6784,
+    "lon": -82.8431,
+    "dome": false
+  },
+  "Gaylord Family Oklahoma Memorial Stadium": {
+    "lat": 35.2058,
+    "lon": -97.4423,
+    "dome": false
+  },
+  "Gerald J. Ford Stadium": {
+    "lat": 32.8361,
+    "lon": -96.7828,
+    "dome": false
+  },
+  "Glass Bowl": {
+    "lat": 41.6579,
+    "lon": -83.6129,
+    "dome": false
+  },
+  "H. A. Chapman Stadium": {
+    "lat": 36.1501,
+    "lon": -95.946,
+    "dome": false
+  },
+  "Hancock Whitney Stadium": {
+    "lat": 30.6911,
+    "lon": -88.1743,
+    "dome": false
+  },
+  "Hard Rock Stadium": {
+    "lat": 25.958,
+    "lon": -80.2389,
+    "dome": false
+  },
+  "Houchens-Smith Stadium": {
+    "lat": 36.9872,
+    "lon": -86.4416,
+    "dome": false
+  },
+  "Howard Jones Field at Los Angeles Memorial Coliseum": {
+    "lat": 34.0141,
+    "lon": -118.2879,
+    "dome": false
+  },
+  "Huntington Bank Stadium": {
+    "lat": 44.9764,
+    "lon": -93.2244,
+    "dome": false
+  },
+  "Huskie Stadium": {
+    "lat": 41.9362,
+    "lon": -88.7707,
+    "dome": false
+  },
+  "Husky Stadium": {
+    "lat": 47.6505,
+    "lon": -122.3017,
+    "dome": false
+  },
+  "Independence Stadium": {
+    "lat": 32.487,
+    "lon": -93.6965,
+    "dome": false
+  },
+  "InfoCision Stadium": {
+    "lat": 41.0739,
+    "lon": -81.5086,
+    "dome": false
+  },
+  "JMA Wireless Dome": {
+    "lat": 43.0362,
+    "lon": -76.1363,
+    "dome": true
+  },
+  "Jack Trice Stadium": {
+    "lat": 42.014,
+    "lon": -93.6358,
+    "dome": false
+  },
+  "Jerry Richardson Stadium": {
+    "lat": 35.3091,
+    "lon": -80.733,
+    "dome": false
+  },
+  "Joan C. Edwards Stadium": {
+    "lat": 38.4227,
+    "lon": -82.4307,
+    "dome": false
+  },
+  "Joe Aillet Stadium": {
+    "lat": 32.5295,
+    "lon": -92.6406,
+    "dome": false
+  },
+  "Jonah Field at War Memorial Stadium": {
+    "lat": 41.3122,
+    "lon": -105.568,
+    "dome": false
+  },
+  "Jones AT&T Stadium": {
+    "lat": 33.5909,
+    "lon": -101.8472,
+    "dome": false
+  },
+  "Jordan-Hare Stadium": {
+    "lat": 32.602,
+    "lon": -85.49,
+    "dome": false
+  },
+  "Kelly/Shorts Stadium": {
+    "lat": 43.5817,
+    "lon": -84.7655,
+    "dome": false
+  },
+  "Kenan Memorial Stadium": {
+    "lat": 35.905,
+    "lon": -79.0476,
+    "dome": false
+  },
+  "Kidd Brewer Stadium": {
+    "lat": 36.213,
+    "lon": -81.686,
+    "dome": false
+  },
+  "Kinnick Stadium": {
+    "lat": 41.6589,
+    "lon": -91.5509,
+    "dome": false
+  },
+  "Kroger Field": {
+    "lat": 38.0224,
+    "lon": -84.5053,
+    "dome": false
+  },
+  "Kyle Field": {
+    "lat": 30.6101,
+    "lon": -96.3404,
+    "dome": false
+  },
+  "LaVell Edwards Stadium": {
+    "lat": 40.2573,
+    "lon": -111.6548,
+    "dome": false
+  },
+  "Lane Stadium": {
+    "lat": 37.22,
+    "lon": -80.4181,
+    "dome": false
+  },
+  "Lincoln Financial Field": {
+    "lat": 39.9008,
+    "lon": -75.1675,
+    "dome": false
+  },
+  "Lucas Oil Stadium": {
+    "lat": 39.7601,
+    "lon": -86.1639,
+    "dome": true
+  },
+  "M.M. Roberts Stadium": {
+    "lat": 31.3265,
+    "lon": -89.3358,
+    "dome": false
+  },
+  "Mackay Stadium": {
+    "lat": 39.5468,
+    "lon": -119.8164,
+    "dome": false
+  },
+  "Malone Stadium": {
+    "lat": 32.531,
+    "lon": -92.0648,
+    "dome": false
+  },
+  "Martin Stadium": {
+    "lat": 46.7315,
+    "lon": -117.168,
+    "dome": false
+  },
+  "Maverik Stadium": {
+    "lat": 41.7517,
+    "lon": -111.8115,
+    "dome": false
+  },
+  "McLane Stadium": {
+    "lat": 31.559,
+    "lon": -97.1151,
+    "dome": false
+  },
+  "Memorial Stadium (Bloomington, IN)": {
+    "lat": 39.1802,
+    "lon": -86.5268,
+    "dome": false
+  },
+  "Memorial Stadium (Champaign, IL)": {
+    "lat": 40.0987,
+    "lon": -88.2358,
+    "dome": false
+  },
+  "Memorial Stadium (Lincoln, NE)": {
+    "lat": 40.8206,
+    "lon": -96.7055,
+    "dome": false
+  },
+  "Mercedes-Benz Stadium": {
+    "lat": 33.7554,
+    "lon": -84.401,
+    "dome": true
+  },
+  "Michie Stadium": {
+    "lat": 41.3894,
+    "lon": -73.9643,
+    "dome": false
+  },
+  "Michigan Stadium": {
+    "lat": 42.2659,
+    "lon": -83.7487,
+    "dome": false
+  },
+  "Milan Puskar Stadium": {
+    "lat": 39.65,
+    "lon": -79.955,
+    "dome": false
+  },
+  "Mountain America Stadium": {
+    "lat": 33.4265,
+    "lon": -111.9325,
+    "dome": false
+  },
+  "NRG Stadium": {
+    "lat": 29.6847,
+    "lon": -95.4107,
+    "dome": true
+  },
+  "Navy-Marine Corps Memorial Stadium": {
+    "lat": 38.991,
+    "lon": -76.4847,
+    "dome": false
+  },
+  "Neyland Stadium": {
+    "lat": 35.955,
+    "lon": -83.9253,
+    "dome": false
+  },
+  "Nippert Stadium": {
+    "lat": 39.1315,
+    "lon": -84.5165,
+    "dome": false
+  },
+  "Northwestern Medicine Field at Martin Stadium": {
+    "lat": 42.06,
+    "lon": -87.6765,
+    "dome": false
+  },
+  "Notre Dame Stadium": {
+    "lat": 41.6984,
+    "lon": -86.234,
+    "dome": false
+  },
+  "Ohio Stadium": {
+    "lat": 40.0017,
+    "lon": -83.0197,
+    "dome": false
+  },
+  "Peden Stadium": {
+    "lat": 39.3214,
+    "lon": -82.0977,
+    "dome": false
+  },
+  "Pratt & Whitney Stadium at Rentschler Field": {
+    "lat": 41.7364,
+    "lon": -72.7277,
+    "dome": false
+  },
+  "Protective Stadium": {
+    "lat": 33.5246,
+    "lon": -86.8086,
+    "dome": false
+  },
+  "Raymond James Stadium": {
+    "lat": 27.9759,
+    "lon": -82.5033,
+    "dome": false
+  },
+  "Reser Stadium": {
+    "lat": 44.5594,
+    "lon": -123.2812,
+    "dome": false
+  },
+  "Rice Stadium": {
+    "lat": 29.7163,
+    "lon": -95.4091,
+    "dome": false
+  },
+  "Rice-Eccles Stadium": {
+    "lat": 40.76,
+    "lon": -111.8487,
+    "dome": false
+  },
+  "Robert W. Plaster Stadium": {
+    "lat": 37.2096,
+    "lon": -93.2815,
+    "dome": false
+  },
+  "Rose Bowl": {
+    "lat": 34.1613,
+    "lon": -118.1676,
+    "dome": false
+  },
+  "Ross-Ade Stadium": {
+    "lat": 40.4319,
+    "lon": -86.9193,
+    "dome": false
+  },
+  "Rynearson Stadium": {
+    "lat": 42.2506,
+    "lon": -83.6289,
+    "dome": false
+  },
+  "S.B. Ballard Stadium": {
+    "lat": 36.8851,
+    "lon": -76.303,
+    "dome": false
+  },
+  "SECU Stadium": {
+    "lat": 38.9907,
+    "lon": -76.9488,
+    "dome": false
+  },
+  "SHI Stadium": {
+    "lat": 40.5134,
+    "lon": -74.4648,
+    "dome": false
+  },
+  "Sanford Stadium": {
+    "lat": 33.9497,
+    "lon": -83.3733,
+    "dome": false
+  },
+  "Scheumann Stadium": {
+    "lat": 40.2044,
+    "lon": -85.4067,
+    "dome": false
+  },
+  "Scott Stadium": {
+    "lat": 38.0316,
+    "lon": -78.5133,
+    "dome": false
+  },
+  "Simmons Bank Liberty Stadium": {
+    "lat": 35.1538,
+    "lon": -90.0315,
+    "dome": false
+  },
+  "Snapdragon Stadium": {
+    "lat": 32.783,
+    "lon": -117.1192,
+    "dome": false
+  },
+  "SoFi Stadium": {
+    "lat": 33.9534,
+    "lon": -118.339,
+    "dome": true
+  },
+  "Spartan Stadium": {
+    "lat": 42.7282,
+    "lon": -84.4837,
+    "dome": false
+  },
+  "Stanford Stadium": {
+    "lat": 37.4346,
+    "lon": -122.1609,
+    "dome": false
+  },
+  "State Farm Stadium": {
+    "lat": 33.5276,
+    "lon": -112.2626,
+    "dome": true
+  },
+  "Sun Bowl Stadium": {
+    "lat": 31.7706,
+    "lon": -106.3722,
+    "dome": false
+  },
+  "TDECU Stadium": {
+    "lat": 29.7224,
+    "lon": -95.3515,
+    "dome": false
+  },
+  "Tiger Stadium": {
+    "lat": 30.412,
+    "lon": -91.1836,
+    "dome": false
+  },
+  "Tom Benson Hall of Fame Stadium": {
+    "lat": 40.8205,
+    "lon": -81.4015,
+    "dome": false
+  },
+  "US Bank Stadium": {
+    "lat": 44.9736,
+    "lon": -93.2575,
+    "dome": true
+  },
+  "University Stadium": {
+    "lat": 35.0669,
+    "lon": -106.6295,
+    "dome": false
+  },
+  "Vaught-Hemingway Stadium": {
+    "lat": 34.3619,
+    "lon": -89.5342,
+    "dome": false
+  },
+  "Veterans Memorial Stadium": {
+    "lat": 31.7965,
+    "lon": -85.9569,
+    "dome": false
+  },
+  "Waldo Stadium": {
+    "lat": 42.2832,
+    "lon": -85.6049,
+    "dome": false
+  },
+  "Wallace Wade Stadium": {
+    "lat": 36.0015,
+    "lon": -78.9425,
+    "dome": false
+  },
+  "War Memorial Stadium": {
+    "lat": 42.8806,
+    "lon": -78.871,
+    "dome": false
+  },
+  "Warren McGuirk Alumni Stadium": {
+    "lat": 42.3856,
+    "lon": -72.5367,
+    "dome": false
+  },
+  "Williams Stadium": {
+    "lat": 37.352,
+    "lon": -79.1767,
+    "dome": false
+  },
+  "Williams-Brice Stadium": {
+    "lat": 34.0095,
+    "lon": -81.0197,
+    "dome": false
+  },
+  "Yager Stadium": {
+    "lat": 39.5123,
+    "lon": -84.7316,
+    "dome": false
+  },
+  "Yulman Stadium": {
+    "lat": 29.9441,
+    "lon": -90.1198,
+    "dome": false
+  }
+}
