@@ -14,42 +14,36 @@ def get_team_defensive_ratings(season="2025-26"):
     from nba_api.stats.endpoints import LeagueDashTeamStats
 
     drtg_map = {}
+    param_names = ["measure_type_detailed", "measure_type_detailed_defense"]
 
-    try:
-        stats = LeagueDashTeamStats(
-            season=season,
-            measure_type_detailed="Advanced"
-        )
-        time.sleep(config.NBA_API_DELAY)
+    for param_name in param_names:
+        delay = 1.0
+        for attempt in range(config.NBA_API_RETRIES):
+            try:
+                stats = LeagueDashTeamStats(season=season, **{param_name: "Advanced"})
+                time.sleep(config.NBA_API_DELAY)
 
-        df = stats.get_data_frames()[0]
-        records = df.to_dict("records")
+                df = stats.get_data_frames()[0]
+                records = df.to_dict("records")
 
-        for row in records:
-            team_id = str(row.get("TEAM_ID", ""))
-            drtg = row.get("DEF_RATING")
-            if team_id and drtg is not None:
-                drtg_map[team_id] = float(drtg)
+                for row in records:
+                    team_id = str(row.get("TEAM_ID", ""))
+                    drtg = row.get("DEF_RATING")
+                    if team_id and drtg is not None:
+                        drtg_map[team_id] = float(drtg)
 
-    except Exception as e:
-        logger.error(f"Failed to get team defensive ratings: {e}")
-        # Try alternate parameter name
-        try:
-            stats = LeagueDashTeamStats(
-                season=season,
-                measure_type_detailed_defense="Advanced"
-            )
-            time.sleep(config.NBA_API_DELAY)
-            df = stats.get_data_frames()[0]
-            records = df.to_dict("records")
-            for row in records:
-                team_id = str(row.get("TEAM_ID", ""))
-                drtg = row.get("DEF_RATING")
-                if team_id and drtg is not None:
-                    drtg_map[team_id] = float(drtg)
-        except Exception as e2:
-            logger.error(f"Alternate parameter also failed: {e2}")
+                if drtg_map:
+                    return drtg_map
+            except Exception as e:
+                if attempt < config.NBA_API_RETRIES - 1:
+                    logger.debug(f"DRTG retry {attempt+1} ({param_name}): {e}")
+                    time.sleep(delay)
+                    delay *= 2
+                else:
+                    logger.warning(f"DRTG failed with {param_name}: {e}")
+                    break  # Try next param name
 
+    logger.error("Could not get team defensive ratings with any parameter variant")
     return drtg_map
 
 
@@ -57,23 +51,32 @@ def get_player_game_log(player_id, season="2025-26", last_n=10):
     """Get last N games for a player.
 
     Returns:
-        list of dicts with PTS, REB, AST, MIN, FGA, FTA
+        list of dicts with PTS, REB, AST, MIN, FGA, FTA, TEAM_ID, etc.
     """
     from nba_api.stats.endpoints import PlayerGameLog
 
-    try:
-        log = PlayerGameLog(
-            player_id=player_id,
-            season=season,
-            last_n_games_nullable=last_n,
-        )
-        time.sleep(config.NBA_API_DELAY)
+    retries = config.NBA_API_RETRIES
+    delay = 1.0
 
-        df = log.get_data_frames()[0]
-        return df.to_dict("records")
-    except Exception as e:
-        logger.warning(f"Failed to get game log for player {player_id}: {e}")
-        return []
+    for attempt in range(retries):
+        try:
+            log = PlayerGameLog(
+                player_id=player_id,
+                season=season,
+            )
+            time.sleep(config.NBA_API_DELAY)
+
+            df = log.get_data_frames()[0]
+            records = df.to_dict("records")
+            return records[:last_n]  # Slice to last N (df is sorted most recent first)
+        except Exception as e:
+            if attempt < retries - 1:
+                logger.debug(f"Retry {attempt+1} for player {player_id}: {e}")
+                time.sleep(delay)
+                delay *= 2  # Exponential backoff: 1s, 2s, 4s
+            else:
+                logger.warning(f"Failed to get game log for player {player_id}: {e}")
+    return []
 
 
 def get_team_roster_minutes(team_id, season="2025-26"):

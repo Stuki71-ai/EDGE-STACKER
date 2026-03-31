@@ -25,6 +25,41 @@ def _make_pick(module="test", model_prob=0.60, odds=-110, edge=0.06):
     )
 
 
+class TestEdgeCases:
+    def test_decimal_payout_zero_odds(self):
+        assert american_to_decimal_payout(0) == 0.0
+
+    def test_kelly_zero_odds(self):
+        assert kelly_fraction(0.6, 0) == 0.0
+
+    def test_kelly_zero_model_prob(self):
+        assert kelly_fraction(0.0, -110) == 0.0
+
+    def test_kelly_model_prob_one(self):
+        k = kelly_fraction(1.0, -110)
+        assert k > 0
+
+    def test_portfolio_zero_bankroll(self):
+        pick = _make_pick(model_prob=0.60, odds=-110, edge=0.08)
+        picks, dd = apply_portfolio_limits([pick], 0.0, 0.0)
+        assert pick.bet_size == 0.0
+
+    def test_portfolio_empty_picks(self):
+        picks, dd = apply_portfolio_limits([], 5000, 5000)
+        assert picks == []
+        assert dd is False
+
+    def test_portfolio_prior_exposure_exceeds_limit(self):
+        pick = _make_pick(model_prob=0.60, odds=-110, edge=0.08)
+        # Prior exposure already at 100% of daily limit
+        picks, dd = apply_portfolio_limits([pick], 5000, 5000, prior_exposure=400.0)
+        assert pick.bet_size == 0.0
+
+    def test_american_to_prob_even_money(self):
+        assert american_to_prob(100) == 0.5
+        assert abs(american_to_prob(-100) - 0.5) < 0.001
+
+
 class TestAmericanToProb:
     def test_negative_odds(self):
         assert abs(american_to_prob(-110) - 0.5238) < 0.001

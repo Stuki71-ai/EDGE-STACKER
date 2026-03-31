@@ -24,7 +24,9 @@ def american_to_prob(odds: int) -> float:
 
 def american_to_decimal_payout(odds: int) -> float:
     """American odds -> decimal payout per $1 wagered (NOT including stake)."""
-    if odds > 0:
+    if odds == 0:
+        return 0.0
+    elif odds > 0:
         return odds / 100.0
     else:
         return 100.0 / abs(odds)
@@ -35,9 +37,11 @@ def kelly_fraction(model_prob: float, odds_raw: int) -> float:
     Kelly % = (b*p - q) / b
     b = decimal payout per $1 wagered
     p = model probability, q = 1-p
-    Returns 0 if no edge.
+    Returns 0 if no edge or invalid odds.
     """
     b = american_to_decimal_payout(odds_raw)
+    if b <= 0:
+        return 0.0
     p = model_prob
     q = 1.0 - p
     k = (b * p - q) / b

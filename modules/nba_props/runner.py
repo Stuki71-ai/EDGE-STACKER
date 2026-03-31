@@ -91,7 +91,7 @@ def run(today):
                     continue
 
                 # Determine which team the player is on and set opponent DRTG
-                player_team_id = _get_player_team_id(player_name)
+                player_team_id = _get_player_team_id_from_games(player_games)
                 if player_team_id == home_team_id:
                     opp_drtg = home_opp_drtg  # home player faces away defense
                     teammate_out = home_teammate_out
@@ -257,16 +257,10 @@ def _resolve_team_id(odds_api_team_name):
     return ""
 
 
-def _get_player_team_id(player_name):
-    """Get a player's current team ID."""
-    try:
-        from nba_api.stats.static import players
-        matches = players.find_players_by_full_name(player_name)
-        if matches:
-            # The static data includes team_id for active players
-            return str(matches[0].get("team_id", ""))
-    except Exception:
-        pass
+def _get_player_team_id_from_games(player_games):
+    """Get a player's team ID from their most recent game log entry."""
+    if player_games:
+        return str(player_games[0].get("TEAM_ID", ""))
     return ""
 
 
