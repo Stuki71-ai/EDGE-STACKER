@@ -156,9 +156,10 @@ def run(today):
                     from staking import calculate_vig
                     vig = round(calculate_vig(over_odds, under_odds), 3)
 
+                game_matchup = f"{away_team} @ {home_team}"
                 pick = Pick(
                     module="nba_props",
-                    matchup=f"{player_name} {stat}",
+                    matchup=game_matchup,
                     pick_description=f"{player_name} {direction} {line} {stat}",
                     best_odds_raw=odds_to_bet,
                     best_odds_book=best_book,

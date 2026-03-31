@@ -205,7 +205,7 @@ def _module_context_line(p):
     if p.module == "ncaaf_weather":
         return f"Wind {ctx.get('wind_mph', '?')}mph, {ctx.get('temp_f', '?')}\u00b0F"
     elif p.module == "nba_props":
-        return f"{ctx.get('stat', '?')} proj {ctx.get('projection', '?')} vs line {ctx.get('line', '?')}"
+        return f"{ctx.get('player', '?')} {ctx.get('stat', '?')} proj {ctx.get('projection', '?')} vs line {ctx.get('line', '?')}"
     elif p.module == "ncaaf_bowls":
         return f"Bowl +{ctx.get('spread', '?')}"
     elif p.module == "ncaab_kenpom":
