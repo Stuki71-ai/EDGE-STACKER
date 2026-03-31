@@ -188,7 +188,7 @@ def run(today):
                         game_time_str = game_dt.astimezone(et).strftime(config.TIME_FMT)
                         bet_by_cet = game_dt.astimezone(cet) - timedelta(hours=1)
                         bet_by_str = bet_by_cet.strftime(config.BET_BY_FMT)
-                        game_date_str = game_dt.astimezone(et).strftime("%Y-%m-%d")
+                        game_date_str = game_dt.astimezone(cet).strftime("%Y-%m-%d")
                 except (ValueError, TypeError):
                     pass
 
