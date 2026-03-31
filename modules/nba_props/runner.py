@@ -1,9 +1,10 @@
 import logging
 from datetime import datetime, timezone, timedelta
 from shared.pick import Pick
+from shared import espn_nba
 from staking import american_to_prob, assign_grade
 import config
-from . import projections, injuries, odds, matchups, filters
+from . import projections, odds, filters
 
 logger = logging.getLogger("edge_stacker")
 
@@ -19,19 +20,24 @@ def run(today):
     """
     season = _get_season(today)
 
-    # Get team defensive ratings (graceful degradation — use league avg if unavailable)
+    # Get team defensive stats from ESPN (works from VPS, unlike nba_api)
     try:
-        drtg_map = matchups.get_team_defensive_ratings(season)
+        drtg_map = espn_nba.get_team_defensive_stats()
+        logger.info(f"ESPN DRTG loaded for {len(drtg_map)} teams")
     except Exception as e:
         logger.warning(f"DRTG unavailable, using league average: {e}")
         drtg_map = {}
 
-    # Get injury report (graceful degradation — skip if unavailable)
+    # Get injury report from ESPN
     try:
-        injury_map = injuries.get_injuries()
+        injury_map = espn_nba.get_injuries()
+        logger.info(f"ESPN injuries loaded for {len(injury_map)} teams")
     except Exception as e:
         logger.warning(f"Injury report unavailable: {e}")
         injury_map = {}
+
+    # Build ESPN team ID cache for team resolution
+    _build_team_id_cache(None)
 
     # Get NBA events from Odds API
     try:
@@ -90,9 +96,8 @@ def run(today):
                 if line is None or over_odds is None or under_odds is None:
                     continue
 
-                # Try to get player game log for projection
-                # Skip if DRTG fetch already failed (nba_api blocked from this IP)
-                player_games = _get_player_games_safe(player_name, season) if drtg_map else []
+                # Get player game log from ESPN
+                player_games = _get_player_games_espn(player_name)
 
                 if player_games:
                     # Full projection with game log data
@@ -240,60 +245,58 @@ def _prioritize_games(events, injury_map, drtg_map):
 
 
 def _odds_implied_projection(line, over_odds, under_odds):
-    """Derive a projection from the line and odds skew.
-
-    If over odds are better (less negative), the market leans OVER,
-    implying the true value is above the line, and vice versa.
-    """
+    """Derive a projection from the line and odds skew."""
     from staking import american_to_prob
     over_prob = american_to_prob(over_odds)
     under_prob = american_to_prob(under_odds)
 
-    # Normalize to remove vig
     total = over_prob + under_prob
     fair_over = over_prob / total
-    fair_under = under_prob / total
 
-    # Shift from line based on odds skew (0.5 = balanced)
-    skew = fair_over - 0.5  # Positive = market expects OVER
+    skew = fair_over - 0.5
     std = line * config.STAT_STD_PCT.get("PTS", 0.22)
-    projection = line + skew * std * 2  # Scale skew into points
+    projection = line + skew * std * 2
     return round(projection, 1)
 
 
-def _get_player_games_safe(player_name, season):
-    """Safely get player game log by name. Returns empty list on failure."""
-    try:
-        from nba_api.stats.static import players
-        matches = players.find_players_by_full_name(player_name)
-        if not matches:
-            return []
-
-        player_id = matches[0]["id"]
-        return matchups.get_player_game_log(player_id, season)
-    except Exception as e:
-        logger.debug(f"Could not get games for {player_name}: {e}")
+def _get_player_games_espn(player_name):
+    """Get player game log via ESPN API."""
+    espn_id = espn_nba.find_espn_player_id(player_name)
+    if not espn_id:
         return []
+    return espn_nba.get_player_gamelog(espn_id, last_n=10)
 
 
 def _resolve_team_id(odds_api_team_name):
-    """Resolve Odds API team name to nba_api team ID string."""
-    try:
-        from nba_api.stats.static import teams
-        from shared.name_normalizer import odds_to_nba_api
+    """Resolve Odds API team name to ESPN team ID via scoreboard matching."""
+    # ESPN scoreboard already loaded in events — use a cached lookup
+    return _team_id_cache.get(odds_api_team_name, "")
 
-        nba_name = odds_to_nba_api(odds_api_team_name) or odds_api_team_name
-        all_teams = teams.get_teams()
-        for t in all_teams:
-            if t["full_name"] == nba_name:
-                return str(t["id"])
-        # Fuzzy fallback: check if city+nickname matches
-        for t in all_teams:
-            if nba_name in t["full_name"] or t["full_name"] in nba_name:
-                return str(t["id"])
+
+_team_id_cache = {}
+
+
+def _build_team_id_cache(events):
+    """Build team name -> ESPN team ID cache from Odds API events + ESPN scoreboard."""
+    global _team_id_cache
+    try:
+        import requests
+        resp = requests.get(
+            "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard",
+            timeout=10
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        for event in data.get("events", []):
+            comp = event.get("competitions", [{}])[0]
+            for c in comp.get("competitors", []):
+                team = c.get("team", {})
+                name = team.get("displayName", "")
+                tid = str(team.get("id", ""))
+                if name and tid:
+                    _team_id_cache[name] = tid
     except Exception as e:
-        logger.debug(f"Could not resolve team ID for '{odds_api_team_name}': {e}")
-    return ""
+        logger.debug(f"Could not build team ID cache: {e}")
 
 
 def _get_player_team_id_from_games(player_games):
@@ -304,10 +307,7 @@ def _get_player_team_id_from_games(player_games):
 
 
 def _check_teammate_out(team_id, injury_map, season):
-    """Check if a top-2 minutes player on a team is OUT.
-
-    Returns (is_out: bool, player_name: str or None)
-    """
+    """Check if a top-2 minutes player on a team is OUT."""
     if not team_id:
         return False, None
 
@@ -316,8 +316,13 @@ def _check_teammate_out(team_id, injury_map, season):
         return False, None
 
     try:
-        roster_minutes = matchups.get_team_roster_minutes(team_id, season)
-        return injuries.is_top_minutes_player_out(team_injuries, roster_minutes)
+        roster = espn_nba.get_team_roster(team_id)
+        if not roster:
+            return False, None
+        top2_ids = {r["id"] for r in roster[:2]}
+        for inj in team_injuries:
+            if inj.get("player_id") in top2_ids:
+                return True, inj.get("player_name")
     except Exception as e:
         logger.debug(f"Could not check teammate injuries for team {team_id}: {e}")
-        return False, None
+    return False, None
