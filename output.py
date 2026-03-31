@@ -81,6 +81,11 @@ def build_email(placed, skipped, bankroll, peak, modules_run,
     h = []
     h.append("<div style='font-family:Consolas,monospace;font-size:13px;line-height:1.6;color:#222'>")
 
+    if not placed:
+        h.append("No qualifying picks today - sitting out.")
+        h.append("</div>")
+        return "".join(h)
+
     module_picks = {}
     for p in placed:
         module_picks.setdefault(p.module, []).append(p)
