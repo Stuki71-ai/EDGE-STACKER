@@ -62,6 +62,20 @@ def run(today):
         home_team = event.get("home_team", "")
         away_team = event.get("away_team", "")
 
+        # Resolve team IDs for DRTG lookup and injury check
+        home_team_id = _resolve_team_id(home_team)
+        away_team_id = _resolve_team_id(away_team)
+
+        # Get opponent DRTGs for this matchup
+        home_opp_drtg = drtg_map.get(away_team_id, config.LEAGUE_AVG_DRTG)  # home faces away defense
+        away_opp_drtg = drtg_map.get(home_team_id, config.LEAGUE_AVG_DRTG)  # away faces home defense
+
+        # Check for teammate-out on each team
+        home_teammate_out, home_out_name = _check_teammate_out(
+            home_team_id, injury_map, season)
+        away_teammate_out, away_out_name = _check_teammate_out(
+            away_team_id, injury_map, season)
+
         # Process each player's props
         for player_name, stat_props in player_props.items():
             for stat, stat_data in stat_props.items():
@@ -72,18 +86,25 @@ def run(today):
                 if line is None or over_odds is None or under_odds is None:
                     continue
 
-                # We need player game log for projection
-                # For now, use a simplified approach since we don't have player_id mapping
-                # In production, this would use nba_api player search
                 player_games = _get_player_games_safe(player_name, season)
                 if not player_games:
                     continue
 
-                # Determine opponent DRTG (simplified - use league avg if not found)
-                opp_drtg = config.LEAGUE_AVG_DRTG
-                # Check if teammate is out
-                teammate_out = False
-                teammate_name = None
+                # Determine which team the player is on and set opponent DRTG
+                player_team_id = _get_player_team_id(player_name)
+                if player_team_id == home_team_id:
+                    opp_drtg = home_opp_drtg  # home player faces away defense
+                    teammate_out = home_teammate_out
+                    teammate_name = home_out_name
+                elif player_team_id == away_team_id:
+                    opp_drtg = away_opp_drtg  # away player faces home defense
+                    teammate_out = away_teammate_out
+                    teammate_name = away_out_name
+                else:
+                    # Could not determine team — fall back to league average
+                    opp_drtg = config.LEAGUE_AVG_DRTG
+                    teammate_out = False
+                    teammate_name = None
 
                 proj_result = projections.project_player_stat(
                     player_games, stat, opp_drtg, teammate_out
@@ -214,3 +235,56 @@ def _get_player_games_safe(player_name, season):
     except Exception as e:
         logger.debug(f"Could not get games for {player_name}: {e}")
         return []
+
+
+def _resolve_team_id(odds_api_team_name):
+    """Resolve Odds API team name to nba_api team ID string."""
+    try:
+        from nba_api.stats.static import teams
+        from shared.name_normalizer import odds_to_nba_api
+
+        nba_name = odds_to_nba_api(odds_api_team_name) or odds_api_team_name
+        all_teams = teams.get_teams()
+        for t in all_teams:
+            if t["full_name"] == nba_name:
+                return str(t["id"])
+        # Fuzzy fallback: check if city+nickname matches
+        for t in all_teams:
+            if nba_name in t["full_name"] or t["full_name"] in nba_name:
+                return str(t["id"])
+    except Exception as e:
+        logger.debug(f"Could not resolve team ID for '{odds_api_team_name}': {e}")
+    return ""
+
+
+def _get_player_team_id(player_name):
+    """Get a player's current team ID."""
+    try:
+        from nba_api.stats.static import players
+        matches = players.find_players_by_full_name(player_name)
+        if matches:
+            # The static data includes team_id for active players
+            return str(matches[0].get("team_id", ""))
+    except Exception:
+        pass
+    return ""
+
+
+def _check_teammate_out(team_id, injury_map, season):
+    """Check if a top-2 minutes player on a team is OUT.
+
+    Returns (is_out: bool, player_name: str or None)
+    """
+    if not team_id:
+        return False, None
+
+    team_injuries = injury_map.get(team_id, [])
+    if not team_injuries:
+        return False, None
+
+    try:
+        roster_minutes = matchups.get_team_roster_minutes(team_id, season)
+        return injuries.is_top_minutes_player_out(team_injuries, roster_minutes)
+    except Exception as e:
+        logger.debug(f"Could not check teammate injuries for team {team_id}: {e}")
+        return False, None
