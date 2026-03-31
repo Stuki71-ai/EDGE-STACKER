@@ -234,23 +234,43 @@ def _get_season(today):
 
 
 def _prioritize_games(events, injury_map, drtg_map):
-    """Pre-filter to top 5-8 games based on injury impact and matchup asymmetry."""
+    """Pre-filter to top 5-8 games per spec:
+    1. Games where a top-2 minutes player is OUT -> highest priority
+    2. Games with extreme matchup asymmetry (top-5 offense vs bottom-5 defense)
+    3. Remaining sorted by spread closeness (closer spread = more prop opportunity)
+    4. Take top 5-8 games
+    """
     scored = []
+    drtg_values = sorted(drtg_map.values()) if drtg_map else []
+    top5_drtg = drtg_values[-5:] if len(drtg_values) >= 5 else drtg_values  # worst defense (highest)
+    bot5_drtg = drtg_values[:5] if len(drtg_values) >= 5 else drtg_values   # best defense (lowest)
+    top5_threshold = min(top5_drtg) if top5_drtg else 999
+    bot5_threshold = max(bot5_drtg) if bot5_drtg else 0
+
     for event in events:
         score = 0
-        # Games with injuries get priority
-        home_team_id = event.get("home_team_id", "")
-        away_team_id = event.get("away_team_id", "")
+        home = event.get("home_team", "")
+        away = event.get("away_team", "")
+        home_id = _resolve_team_id(home)
+        away_id = _resolve_team_id(away)
 
-        if str(home_team_id) in injury_map or str(away_team_id) in injury_map:
+        # 1. Games where a top-2 minutes player is OUT
+        if home_id in injury_map or away_id in injury_map:
             score += 10
 
-        # Extreme matchup asymmetry
-        home_drtg = drtg_map.get(str(home_team_id), config.LEAGUE_AVG_DRTG)
-        away_drtg = drtg_map.get(str(away_team_id), config.LEAGUE_AVG_DRTG)
+        # 2. Extreme matchup asymmetry (top-5 offense vs bottom-5 defense)
+        home_drtg = drtg_map.get(home_id, config.LEAGUE_AVG_DRTG)
+        away_drtg = drtg_map.get(away_id, config.LEAGUE_AVG_DRTG)
+        if home_drtg >= top5_threshold or away_drtg >= top5_threshold:
+            score += 5  # One team has bottom-5 defense
+        if home_drtg <= bot5_threshold or away_drtg <= bot5_threshold:
+            score += 3  # One team has top-5 defense (opponent benefits)
+
+        # 3. Spread closeness (closer games = more prop opportunity)
+        # Use DRTG diff as proxy for spread — smaller diff = closer game
         drtg_diff = abs(home_drtg - away_drtg)
-        if drtg_diff > 5:
-            score += 5
+        closeness_score = max(0, 10 - drtg_diff)  # Max 10 for even matchup
+        score += closeness_score
 
         scored.append((score, event))
 
