@@ -90,7 +90,7 @@ def build_email(placed, skipped, bankroll, peak, modules_run,
         for p in picks:
             star = "&#9733; " if p.grade.startswith("A") else ""
             edge_color = "#0a7e0a" if p.edge_pct >= 0.10 else "#b8860b" if p.edge_pct >= 0.06 else "#555"
-            cap_note = f" ({p.staking_note})" if p.staking_note else ""
+            cap_note = ""
             ctx = p.context
             stat_abbr = ctx.get("stat", "")
             stat_full = STAT_FULL.get(stat_abbr, stat_abbr)
