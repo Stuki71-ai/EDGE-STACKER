@@ -60,6 +60,7 @@ def extract_props(event_odds):
                         "best_under_book": None,
                         "all_over": [],
                         "all_under": [],
+                        "all_lines": [],
                     }
 
                 entry = props[player][stat]
@@ -68,7 +69,7 @@ def extract_props(event_odds):
                 side = outcome.get("name", "")
 
                 if line is not None:
-                    entry["line"] = line
+                    entry["all_lines"].append(line)
 
                 if side == "Over" and price is not None:
                     entry["all_over"].append(price)
@@ -82,9 +83,14 @@ def extract_props(event_odds):
                         entry["best_under_odds"] = price
                         entry["best_under_book"] = book_name
 
-    # Set consensus odds (median)
+    # Set consensus line (median across all books) and consensus odds
     for player_props in props.values():
         for stat_data in player_props.values():
+            all_lines = sorted(stat_data.get("all_lines", []))
+            if all_lines:
+                mid = len(all_lines) // 2
+                stat_data["line"] = all_lines[mid]  # Median line
+
             for key, all_key in [("over_odds", "all_over"), ("under_odds", "all_under")]:
                 odds_list = sorted(stat_data[all_key])
                 if odds_list:
