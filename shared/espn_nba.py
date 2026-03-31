@@ -143,7 +143,7 @@ def get_team_roster(team_id):
     """Get team roster with player IDs.
 
     Returns:
-        list of {id, name, minutes} dicts sorted by minutes desc
+        list of {id, name} dicts
     """
     try:
         resp = requests.get(f"{SITE_BASE}/teams/{team_id}/roster", timeout=10)
@@ -151,21 +151,13 @@ def get_team_roster(team_id):
         data = resp.json()
 
         roster = []
-        for group in data.get("athletes", []):
-            for player in group.get("items", []):
-                pid = str(player.get("id", ""))
-                name = player.get("fullName", "")
-                # Try to get minutes from stats
-                stats = player.get("statistics", {})
-                mins = 0
-                if stats:
-                    for cat in stats.get("splits", {}).get("categories", []):
-                        for s in cat.get("stats", []):
-                            if s.get("name") == "minutes":
-                                mins = float(s.get("value", 0))
-                roster.append({"id": pid, "name": name, "minutes": mins})
+        for player in data.get("athletes", []):
+            # Athletes are directly in the list (not nested in groups/items)
+            pid = str(player.get("id", ""))
+            name = player.get("fullName", "") or player.get("displayName", "")
+            if pid and name:
+                roster.append({"id": pid, "name": name})
 
-        roster.sort(key=lambda x: x["minutes"], reverse=True)
         return roster
     except Exception as e:
         logger.debug(f"Roster for team {team_id}: {e}")
