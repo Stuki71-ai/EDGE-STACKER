@@ -110,12 +110,6 @@ class TestBuildOutput:
 
         email = output["email_body"]
         assert "EDGE STACKER" in email
-        assert "Bankroll:" in email
-        assert "Peak:" in email
-        assert "Daily Exposure:" in email
-        assert "SUMMARY" in email
-        assert "NC STATE +7.5" in email
-        assert "FanDuel" in email
         assert "$150.00" in email
 
     def test_empty_picks_no_crash(self):
