@@ -93,24 +93,11 @@ def build_email(placed, skipped, bankroll, peak, modules_run,
         for p in picks:
             star = "&#9733; " if p.grade.startswith("A") else ""
             edge_color = "#0a7e0a" if p.edge_pct >= 0.10 else "#b8860b" if p.edge_pct >= 0.06 else "#555"
-            h.append(f"<div style='margin:10px 0;padding:8px;background:#f5f5f5;border-left:4px solid {edge_color}'>")
-            h.append(f"<b>{star}{p.grade}</b> | {_module_context_line(p)} | <b style='color:{edge_color}'>Edge: {p.edge_pct:.1%}</b> | Kelly raw: {p.kelly_fraction:.1%}<br>")
-            h.append(f"<b>{p.matchup}</b> &rarr; <b>{p.pick_description}</b> ({p.best_odds_book} {_format_odds(p.best_odds_raw)})<br>")
-            h.append(f"Consensus: {_format_odds(p.consensus_odds_raw)} | {_module_detail_line(p)}<br>")
             cap_note = f" ({p.staking_note})" if p.staking_note else ""
-            h.append(f"<b>Bet ${p.bet_size:,.2f} &rarr; Win ${p.potential_win:,.2f}</b>{cap_note}<br>")
-            h.append(f"BET BY: {p.bet_by} | Game: {p.game_time}")
+            h.append(f"<div style='margin:10px 0;padding:8px;background:#f5f5f5;border-left:4px solid {edge_color}'>")
+            h.append(f"<b>{star}{p.pick_description}</b> ({p.best_odds_book} {_format_odds(p.best_odds_raw)}) | <b style='color:{edge_color}'>Edge: {p.edge_pct:.1%}</b><br>")
+            h.append(f"<b>Bet ${p.bet_size:,.2f} &rarr; Win ${p.potential_win:,.2f}</b>{cap_note} | BET BY: {p.bet_by} | Game: {p.game_time}")
             h.append("</div>")
-
-    # Skipped: only show top 5 by edge, just a count for the rest
-    if skipped:
-        h.append(f"<hr style='border:1px solid #999'>")
-        h.append(f"<h3 style='margin:4px 0;color:#888'>SKIPPED ({len(skipped)} picks)</h3>")
-        top_skipped = sorted(skipped, key=lambda p: p.edge_pct, reverse=True)[:5]
-        for p in top_skipped:
-            h.append(f"<span style='color:#888'>{p.grade} | {p.pick_description} (edge {p.edge_pct:.1%}) &rarr; {p.staking_note or 'Skipped'}</span><br>")
-        if len(skipped) > 5:
-            h.append(f"<span style='color:#aaa'>... and {len(skipped) - 5} more skipped by caps</span><br>")
 
     h.append(f"<hr style='border:1px solid #333'>")
     h.append(f"<h3 style='margin:4px 0'>SUMMARY</h3>")
