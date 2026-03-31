@@ -108,6 +108,10 @@ def run(today):
                     if vig_check > config.PROP_MAX_VIG:
                         continue
 
+                # Skip players who are OUT/Doubtful (can't bet on them)
+                if _is_player_injured(player_name, injury_map):
+                    continue
+
                 # Fetch player game log from ESPN
                 player_games = _get_player_games_espn(player_name)
 
@@ -276,6 +280,16 @@ def _prioritize_games(events, injury_map, drtg_map):
 
     scored.sort(key=lambda x: x[0], reverse=True)
     return [event for _, event in scored[:config.PROP_MAX_GAMES_PER_RUN]]
+
+
+def _is_player_injured(player_name, injury_map):
+    """Check if a player is listed as Out or Doubtful."""
+    name_lower = player_name.lower()
+    for team_injuries in injury_map.values():
+        for inj in team_injuries:
+            if inj.get("player_name", "").lower() == name_lower:
+                return True
+    return False
 
 
 def _get_player_games_espn(player_name):
