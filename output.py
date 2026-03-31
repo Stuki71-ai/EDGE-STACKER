@@ -59,24 +59,21 @@ def build_output(placed, skipped, bankroll, peak, modules_run,
 
 def build_email(placed, skipped, bankroll, peak, modules_run,
                 date_str, time_label, daily_exposure, daily_limit, summary):
-    """Build the plain text email digest."""
+    """Build HTML email digest for Gmail."""
     from staking import KELLY_MULTIPLIER, KELLY_MULTIPLIER_DRAWDOWN
 
-    # Detect drawdown
     dd = (peak - bankroll) / peak if peak > 0 else 0
     km = KELLY_MULTIPLIER_DRAWDOWN if dd >= 0.20 else KELLY_MULTIPLIER
     kelly_label = f"{'Eighth' if km == KELLY_MULTIPLIER_DRAWDOWN else 'Quarter'} ({km})"
-
     exposure_pct = (daily_exposure / daily_limit * 100) if daily_limit > 0 else 0
 
-    lines = []
-    lines.append(f"EDGE STACKER \u2014 {_format_date(date_str)} ({time_label})")
-    lines.append(f"Bankroll: ${bankroll:,.2f} | Peak: ${peak:,.2f} | Kelly: {kelly_label}")
-    lines.append(f"Daily Exposure: ${daily_exposure:,.2f} / ${daily_limit:,.2f} limit ({exposure_pct:.1f}%)")
-    lines.append(f"Active: {', '.join(modules_run)}")
-    lines.append("")
+    h = []
+    h.append("<div style='font-family:Consolas,monospace;font-size:13px;line-height:1.6;color:#222'>")
+    h.append(f"<h2 style='margin:0'>EDGE STACKER &mdash; {_format_date(date_str)} ({time_label})</h2>")
+    h.append(f"<b>Bankroll:</b> ${bankroll:,.2f} | <b>Peak:</b> ${peak:,.2f} | <b>Kelly:</b> {kelly_label}<br>")
+    h.append(f"<b>Daily Exposure:</b> ${daily_exposure:,.2f} / ${daily_limit:,.2f} limit ({exposure_pct:.1f}%)<br>")
+    h.append(f"<b>Active:</b> {', '.join(modules_run)}<br><br>")
 
-    # Group picks by module
     module_picks = {}
     for p in placed:
         module_picks.setdefault(p.module, []).append(p)
@@ -90,41 +87,39 @@ def build_email(placed, skipped, bankroll, peak, modules_run,
     }
 
     for module, picks in module_picks.items():
-        lines.append("\u2501" * 35)
-        lines.append(MODULE_NAMES.get(module, module.upper()))
-        lines.append("\u2501" * 35)
-        lines.append("")
+        h.append(f"<hr style='border:1px solid #333'>")
+        h.append(f"<h3 style='margin:4px 0'>{MODULE_NAMES.get(module, module.upper())}</h3>")
 
         for p in picks:
-            star = "\u2605 " if p.grade.startswith("A") else ""
-            lines.append(f"{star}{p.grade} | {_module_context_line(p)} | Edge: {p.edge_pct:.1%} | Kelly raw: {p.kelly_fraction:.1%}")
-            lines.append(f"{p.matchup} \u2192 {p.pick_description} ({p.best_odds_book} {_format_odds(p.best_odds_raw)})")
-            lines.append(f"Consensus: {_format_odds(p.consensus_odds_raw)} | {_module_detail_line(p)}")
-
+            star = "&#9733; " if p.grade.startswith("A") else ""
+            edge_color = "#0a7e0a" if p.edge_pct >= 0.10 else "#b8860b" if p.edge_pct >= 0.06 else "#555"
+            h.append(f"<div style='margin:10px 0;padding:8px;background:#f5f5f5;border-left:4px solid {edge_color}'>")
+            h.append(f"<b>{star}{p.grade}</b> | {_module_context_line(p)} | <b style='color:{edge_color}'>Edge: {p.edge_pct:.1%}</b> | Kelly raw: {p.kelly_fraction:.1%}<br>")
+            h.append(f"<b>{p.matchup}</b> &rarr; <b>{p.pick_description}</b> ({p.best_odds_book} {_format_odds(p.best_odds_raw)})<br>")
+            h.append(f"Consensus: {_format_odds(p.consensus_odds_raw)} | {_module_detail_line(p)}<br>")
             cap_note = f" ({p.staking_note})" if p.staking_note else ""
-            lines.append(f"Bet ${p.bet_size:,.2f} \u2192 Win ${p.potential_win:,.2f}{cap_note}")
-            lines.append(f"BET BY: {p.bet_by} | Game: {p.game_time}")
-            lines.append("")
+            h.append(f"<b>Bet ${p.bet_size:,.2f} &rarr; Win ${p.potential_win:,.2f}</b>{cap_note}<br>")
+            h.append(f"BET BY: {p.bet_by} | Game: {p.game_time}")
+            h.append("</div>")
 
+    # Skipped: only show top 5 by edge, just a count for the rest
     if skipped:
-        lines.append("\u2501" * 35)
-        lines.append("SKIPPED")
-        lines.append("\u2501" * 35)
-        for p in skipped:
-            lines.append(f"{p.grade} | {p.pick_description} (edge {p.edge_pct:.1%}) \u2192 {p.staking_note or 'Skipped'}")
-        lines.append("")
+        h.append(f"<hr style='border:1px solid #999'>")
+        h.append(f"<h3 style='margin:4px 0;color:#888'>SKIPPED ({len(skipped)} picks)</h3>")
+        top_skipped = sorted(skipped, key=lambda p: p.edge_pct, reverse=True)[:5]
+        for p in top_skipped:
+            h.append(f"<span style='color:#888'>{p.grade} | {p.pick_description} (edge {p.edge_pct:.1%}) &rarr; {p.staking_note or 'Skipped'}</span><br>")
+        if len(skipped) > 5:
+            h.append(f"<span style='color:#aaa'>... and {len(skipped) - 5} more skipped by caps</span><br>")
 
-    lines.append("\u2501" * 35)
-    lines.append("SUMMARY")
-    lines.append("\u2501" * 35)
-    lines.append(f"Evaluated: {summary['games_evaluated']} games | "
-                 f"Qualified: {summary['picks_qualified']} | "
-                 f"Placed: {summary['picks_placed']} | "
-                 f"Skipped: {summary['picks_skipped']}")
-    lines.append(f"Wagered: ${summary['total_wagered']:,.2f} | "
-                 f"Potential win: ${summary['total_potential_win']:,.2f}")
+    h.append(f"<hr style='border:1px solid #333'>")
+    h.append(f"<h3 style='margin:4px 0'>SUMMARY</h3>")
+    h.append(f"Evaluated: {summary['games_evaluated']} games | Qualified: {summary['picks_qualified']} | "
+             f"<b>Placed: {summary['picks_placed']}</b> | Skipped: {summary['picks_skipped']}<br>")
+    h.append(f"<b>Wagered: ${summary['total_wagered']:,.2f}</b> | Potential win: ${summary['total_potential_win']:,.2f}")
+    h.append("</div>")
 
-    return "\n".join(lines)
+    return "".join(h)
 
 
 def output_empty(message, bankroll=0.0, peak=0.0, modules_run=None):
