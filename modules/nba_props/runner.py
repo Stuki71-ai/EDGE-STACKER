@@ -91,7 +91,8 @@ def run(today):
                     continue
 
                 # Try to get player game log for projection
-                player_games = _get_player_games_safe(player_name, season)
+                # Skip if DRTG fetch already failed (nba_api blocked from this IP)
+                player_games = _get_player_games_safe(player_name, season) if drtg_map else []
 
                 if player_games:
                     # Full projection with game log data
