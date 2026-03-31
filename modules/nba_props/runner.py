@@ -36,8 +36,13 @@ def run(today):
         logger.warning(f"Injury report unavailable: {e}")
         injury_map = {}
 
-    # Build ESPN team ID cache for team resolution
+    # Build ESPN team ID cache from today's scoreboard
     _build_team_id_cache(None)
+
+    # Pre-build ESPN player ID cache for today's teams (avoids per-player API calls)
+    all_team_ids = list(_team_id_cache.values())
+    if all_team_ids:
+        espn_nba.build_player_id_cache(all_team_ids)
 
     # Get NBA events from Odds API
     try:
@@ -96,7 +101,13 @@ def run(today):
                 if line is None or over_odds is None or under_odds is None:
                     continue
 
-                # Get player game log from ESPN
+                # Pre-screen: check if odds skew suggests any edge before expensive gamelog fetch
+                quick_proj = _odds_implied_projection(line, over_odds, under_odds)
+                _, quick_edge, _, _ = filters.prop_edge(quick_proj, line, stat, over_odds, under_odds)
+                if quick_edge < config.PROP_MIN_EDGE:
+                    continue
+
+                # Fetch player game log from ESPN (only for candidates with initial edge)
                 player_games = _get_player_games_espn(player_name)
 
                 if player_games:

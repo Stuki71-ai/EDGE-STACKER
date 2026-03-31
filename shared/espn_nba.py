@@ -61,99 +61,81 @@ def get_player_gamelog(espn_player_id, last_n=10):
 
 
 def get_team_defensive_stats():
-    """Get defensive stats for all NBA teams.
+    """Get defensive stats for all NBA teams via standings (one API call).
 
-    ESPN doesn't provide DEF_RATING directly, but we can approximate
-    from points allowed per game (oppPtsPerGame) via team statistics.
+    Uses avgPointsAgainst as a proxy for defensive rating.
 
     Returns:
-        dict mapping espn_team_id (str) -> approx defensive rating (float)
+        dict mapping espn_team_id (str) -> defensive rating approx (float)
     """
     drtg_map = {}
 
     try:
-        # Get all teams
-        resp = requests.get(f"{SITE_BASE}/teams", timeout=15)
+        resp = requests.get(f"{SITE_BASE.replace('/site/', '/v2/')}/standings".replace("site/v2", "v2"), timeout=15)
+        if resp.status_code != 200:
+            resp = requests.get("https://site.api.espn.com/apis/v2/sports/basketball/nba/standings", timeout=15)
         resp.raise_for_status()
         data = resp.json()
 
-        for team_entry in data.get("sports", [{}])[0].get("leagues", [{}])[0].get("teams", []):
-            team = team_entry.get("team", {})
-            team_id = str(team.get("id", ""))
-            if not team_id:
-                continue
-
-            # Fetch team stats
-            try:
-                abbr = team.get("abbreviation", "").lower()
-                stats_resp = requests.get(
-                    f"{SITE_BASE}/teams/{team_id}/statistics", timeout=10
-                )
-                stats_resp.raise_for_status()
-                stats_data = stats_resp.json()
-
-                # Look for defensive stats
-                for cat in stats_data.get("splitCategories", []):
-                    if cat.get("name") == "defensive":
-                        for stat in cat.get("stats", []):
-                            # avgPointsAgainst approximates DRTG
-                            if stat.get("name") in ("avgPointsAgainst", "avgPoints"):
-                                drtg_map[team_id] = float(stat.get("value", 112.0))
-                                break
-
-                # Fallback: look in general stats for opponent points
-                if team_id not in drtg_map:
-                    for cat in stats_data.get("splitCategories", []):
-                        for stat in cat.get("stats", []):
-                            if "opponent" in stat.get("name", "").lower() and "point" in stat.get("name", "").lower():
-                                drtg_map[team_id] = float(stat.get("value", 112.0))
-                                break
-
-            except Exception as e:
-                logger.debug(f"Stats for team {team_id}: {e}")
+        for group in data.get("children", []):
+            for entry in group.get("standings", {}).get("entries", []):
+                team_id = str(entry.get("team", {}).get("id", ""))
+                if not team_id:
+                    continue
+                for stat in entry.get("stats", []):
+                    if stat.get("name") == "avgPointsAgainst":
+                        drtg_map[team_id] = float(stat.get("value", 112.0))
+                        break
 
     except Exception as e:
-        logger.warning(f"ESPN team stats failed: {e}")
+        logger.warning(f"ESPN standings/DRTG failed: {e}")
 
     return drtg_map
 
 
+_player_id_cache = {}
+
+
+def build_player_id_cache(team_ids):
+    """Pre-fetch rosters for a list of team IDs, building a name -> ESPN player ID cache.
+
+    Call once at the start of a run with all team IDs for today's games.
+    This avoids per-player API calls.
+    """
+    global _player_id_cache
+    for team_id in team_ids:
+        try:
+            roster = get_team_roster(team_id)
+            for player in roster:
+                name = player.get("name", "")
+                pid = player.get("id", "")
+                if name and pid:
+                    _player_id_cache[name] = pid
+        except Exception as e:
+            logger.debug(f"Roster cache for team {team_id}: {e}")
+
+    logger.info(f"ESPN player cache: {len(_player_id_cache)} players from {len(team_ids)} teams")
+
+
 def find_espn_player_id(player_name):
-    """Search ESPN for a player by name, return their ESPN ID.
+    """Look up ESPN player ID from cache (built by build_player_id_cache).
+
+    Falls back to search API if not in cache.
 
     Returns:
         str ESPN player ID or None
     """
-    try:
-        resp = requests.get(
-            f"{SITE_BASE}/athletes",
-            params={"search": player_name, "limit": 5},
-            timeout=10,
-        )
-        resp.raise_for_status()
-        data = resp.json()
+    # Check cache first
+    if player_name in _player_id_cache:
+        return _player_id_cache[player_name]
 
-        athletes = data.get("athletes", data.get("items", []))
-        if athletes:
-            return str(athletes[0].get("id", ""))
-    except Exception:
-        pass
+    # Fuzzy match: "LeBron James" might be listed slightly differently
+    name_lower = player_name.lower()
+    for cached_name, pid in _player_id_cache.items():
+        if cached_name.lower() == name_lower:
+            return pid
 
-    # Fallback: search via site API
-    try:
-        resp = requests.get(
-            "https://site.api.espn.com/apis/common/v3/search",
-            params={"query": player_name, "limit": 3, "type": "player", "sport": "basketball", "league": "nba"},
-            timeout=10,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        items = data.get("items", [])
-        if items:
-            return str(items[0].get("id", ""))
-    except Exception:
-        pass
-
+    # Not in cache — skip (don't do per-player API calls)
     return None
 
 
