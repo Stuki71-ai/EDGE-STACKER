@@ -118,11 +118,11 @@ def run(today):
         game_time_str = ""
         try:
             game_dt = datetime.fromisoformat(game["date"].replace("Z", "+00:00"))
-            et_offset = timezone(timedelta(hours=-5))
-            game_et = game_dt.astimezone(et_offset)
-            game_time_str = game_et.strftime(config.TIME_FMT)
-            bet_by_et = game_et - timedelta(hours=1)
-            bet_by_str = bet_by_et.strftime(config.TIME_FMT)
+            et = timezone(timedelta(hours=config.ET_OFFSET_HOURS)); cet = timezone(timedelta(hours=config.CET_OFFSET_HOURS))
+            game_time_str = game_dt.astimezone(et).strftime(config.TIME_FMT)
+            
+            bet_by_cet = game_dt.astimezone(cet) - timedelta(hours=1)
+            bet_by_str = bet_by_cet.strftime(config.BET_BY_FMT)
         except (ValueError, TypeError):
             pass
 

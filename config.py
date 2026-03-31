@@ -87,6 +87,9 @@ CONF_TOURNEY_MIN_ATS = 0.60
 
 # ── Cross-platform time formatting ──
 TIME_FMT = "%#I:%M %p ET" if platform.system() == "Windows" else "%-I:%M %p ET"
+BET_BY_FMT = "%#I:%M %p CET" if platform.system() == "Windows" else "%-I:%M %p CET"
+CET_OFFSET_HOURS = 1  # UTC+1 (CET), use 2 for CEST
+ET_OFFSET_HOURS = -5  # UTC-5 (ET)
 
 # ── Default Bankroll ──
 DEFAULT_BANKROLL = 5000.00

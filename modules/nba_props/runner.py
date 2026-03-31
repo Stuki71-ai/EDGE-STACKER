@@ -101,46 +101,51 @@ def run(today):
                 if line is None or over_odds is None or under_odds is None:
                     continue
 
-                # Pre-screen: check if odds skew suggests any edge before expensive gamelog fetch
-                quick_proj = _odds_implied_projection(line, over_odds, under_odds)
-                _, quick_edge, _, _ = filters.prop_edge(quick_proj, line, stat, over_odds, under_odds)
-                if quick_edge < config.PROP_MIN_EDGE:
-                    continue
+                # SPEC FILTER 3: Vig check (before expensive gamelog fetch)
+                if over_odds is not None and under_odds is not None:
+                    from staking import calculate_vig
+                    vig_check = calculate_vig(over_odds, under_odds)
+                    if vig_check > config.PROP_MAX_VIG:
+                        continue
 
-                # Fetch player game log from ESPN (only for candidates with initial edge)
+                # Fetch player game log from ESPN
                 player_games = _get_player_games_espn(player_name)
 
-                if player_games:
-                    # Full projection with game log data
-                    player_team_id = _get_player_team_id_from_games(player_games)
-                    if player_team_id == home_team_id:
-                        opp_drtg = home_opp_drtg
-                        teammate_out = home_teammate_out
-                        teammate_name = home_out_name
-                    elif player_team_id == away_team_id:
-                        opp_drtg = away_opp_drtg
-                        teammate_out = away_teammate_out
-                        teammate_name = away_out_name
-                    else:
-                        opp_drtg = config.LEAGUE_AVG_DRTG
-                        teammate_out = False
-                        teammate_name = None
+                # SPEC: Player must have game log data — no fallback projections
+                if not player_games:
+                    continue
 
-                    proj_result = projections.project_player_stat(
-                        player_games, stat, opp_drtg, teammate_out
-                    )
-                    projection = proj_result["projection"]
-                    minutes_stable = proj_result["minutes_stable"]
-                    l10_avg = round(sum(float(g[stat]) for g in player_games) / len(player_games), 1)
+                # SPEC FILTER 1: Player has >= 10 games this season
+                if len(player_games) < config.PROP_MIN_GAMES:
+                    continue
+
+                # SPEC FILTER 2: Player averages >= 20 minutes/game
+                avg_min = sum(float(g.get("MIN", 0)) for g in player_games) / len(player_games)
+                if avg_min < config.PROP_MIN_MINUTES:
+                    continue
+
+                # Determine opponent DRTG and teammate-out status
+                player_team_id = _get_player_team_id_from_games(player_games)
+                if player_team_id == home_team_id:
+                    opp_drtg = home_opp_drtg
+                    teammate_out = home_teammate_out
+                    teammate_name = home_out_name
+                elif player_team_id == away_team_id:
+                    opp_drtg = away_opp_drtg
+                    teammate_out = away_teammate_out
+                    teammate_name = away_out_name
                 else:
-                    # Fallback: use odds-implied projection from line
-                    # If best odds favor OVER, the line is likely below true value
-                    projection = _odds_implied_projection(line, over_odds, under_odds)
-                    minutes_stable = True  # Assume stable when we lack data
-                    l10_avg = line  # Best guess
                     opp_drtg = config.LEAGUE_AVG_DRTG
                     teammate_out = False
                     teammate_name = None
+
+                # SPEC: Full projection model with game log data
+                proj_result = projections.project_player_stat(
+                    player_games, stat, opp_drtg, teammate_out
+                )
+                projection = proj_result["projection"]
+                minutes_stable = proj_result["minutes_stable"]
+                l10_avg = round(sum(float(g[stat]) for g in player_games) / len(player_games), 1)
 
                 # Calculate edge
                 direction, edge, model_prob, odds_to_bet = filters.prop_edge(
@@ -150,10 +155,9 @@ def run(today):
                 if direction is None:
                     continue
 
-                # Run filters (use dummy 10-game list if no game log)
-                filter_games = player_games if player_games else [{"MIN": 30, stat: line}] * 10
+                # Run remaining filters (vig, edge threshold, minutes stability)
                 passes, reason = filters.passes_filters(
-                    filter_games, stat_data, edge, minutes_stable
+                    player_games, stat_data, edge, minutes_stable
                 )
                 if not passes:
                     logger.debug(f"Filtered: {player_name} {stat} -- {reason}")
@@ -167,18 +171,18 @@ def run(today):
                 consensus = (stat_data.get("over_odds") if direction == "OVER"
                              else stat_data.get("under_odds")) or odds_to_bet
 
-                # Calculate bet_by (1 hour before game time)
+                # Game time in ET, Bet-by in CET (1 hour before game)
                 bet_by_str = ""
                 game_time_str = ""
                 try:
                     commence = event.get("commence_time", "")
                     if commence:
                         game_dt = datetime.fromisoformat(commence.replace("Z", "+00:00"))
-                        et_offset = timezone(timedelta(hours=-5))
-                        game_et = game_dt.astimezone(et_offset)
-                        game_time_str = game_et.strftime(config.TIME_FMT)
-                        bet_by_et = game_et - timedelta(hours=1)
-                        bet_by_str = bet_by_et.strftime(config.TIME_FMT)
+                        et = timezone(timedelta(hours=config.ET_OFFSET_HOURS))
+                        cet = timezone(timedelta(hours=config.CET_OFFSET_HOURS))
+                        game_time_str = game_dt.astimezone(et).strftime(config.TIME_FMT)
+                        bet_by_cet = game_dt.astimezone(cet) - timedelta(hours=1)
+                        bet_by_str = bet_by_cet.strftime(config.BET_BY_FMT)
                 except (ValueError, TypeError):
                     pass
 
@@ -205,11 +209,10 @@ def run(today):
                         "projection": projection,
                         "line": line,
                         "l10_avg": l10_avg,
-                        "opp_drtg": opp_drtg,
+                        "opp_drtg": round(opp_drtg, 1),
                         "teammate_out": teammate_name,
                         "minutes_stable": minutes_stable,
                         "vig": vig,
-                        "data_source": "game_log" if player_games else "odds_implied",
                     },
                     bet_by=bet_by_str,
                     game_time=game_time_str,
@@ -253,21 +256,6 @@ def _prioritize_games(events, injury_map, drtg_map):
 
     scored.sort(key=lambda x: x[0], reverse=True)
     return [event for _, event in scored[:config.PROP_MAX_GAMES_PER_RUN]]
-
-
-def _odds_implied_projection(line, over_odds, under_odds):
-    """Derive a projection from the line and odds skew."""
-    from staking import american_to_prob
-    over_prob = american_to_prob(over_odds)
-    under_prob = american_to_prob(under_odds)
-
-    total = over_prob + under_prob
-    fair_over = over_prob / total
-
-    skew = fair_over - 0.5
-    std = line * config.STAT_STD_PCT.get("PTS", 0.22)
-    projection = line + skew * std * 2
-    return round(projection, 1)
 
 
 def _get_player_games_espn(player_name):
