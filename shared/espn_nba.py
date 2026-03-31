@@ -169,7 +169,7 @@ def get_injuries():
     """Get NBA injuries from ESPN.
 
     Returns:
-        dict mapping team_id -> list of {player_id, player_name, status}
+        dict mapping team_id (str) -> list of {player_id, player_name, status}
     """
     injuries = {}
     try:
@@ -177,19 +177,33 @@ def get_injuries():
         resp.raise_for_status()
         data = resp.json()
 
-        for team_data in data.get("injuries", []):
-            team_id = str(team_data.get("team", {}).get("id", ""))
+        for team_entry in data.get("injuries", []):
+            # Each team_entry has: id (team name), displayName, injuries[]
+            # Team ID is inside each injury's athlete.team.id
+            team_id = ""
             team_injuries = []
-            for inj in team_data.get("injuries", []):
-                status = inj.get("status", "")
-                if status in ("Out", "Doubtful"):
-                    athlete = inj.get("athlete", {})
+            for inj in team_entry.get("injuries", []):
+                athlete = inj.get("athlete", {})
+                # Get team ID from athlete data
+                if not team_id:
+                    team_id = str(athlete.get("team", {}).get("id", ""))
+
+                # Check injury type — spec says Out and Doubtful
+                inj_type = inj.get("type", {})
+                type_name = inj_type.get("name", "") if isinstance(inj_type, dict) else str(inj_type)
+                status_text = inj.get("status", "")
+
+                is_out = ("OUT" in type_name.upper() or "OUT" in status_text.upper()
+                          or "DOUBTFUL" in type_name.upper() or "DOUBTFUL" in status_text.upper())
+
+                if is_out:
                     team_injuries.append({
-                        "player_id": str(athlete.get("id", "")),
-                        "player_name": athlete.get("displayName", ""),
-                        "status": status,
+                        "player_id": str(athlete.get("id", "") if isinstance(athlete, dict) else ""),
+                        "player_name": athlete.get("displayName", "") if isinstance(athlete, dict) else "",
+                        "status": status_text or type_name,
                     })
-            if team_injuries:
+
+            if team_injuries and team_id:
                 injuries[team_id] = team_injuries
 
     except Exception as e:
