@@ -41,8 +41,8 @@ def active_modules(today: date) -> list:
     if (month == 12 and day >= 14) or (month == 1 and day <= 10):
         active.append("ncaaf_bowls")
 
-    # Module 4: NCAAB KenPom -- Nov 1 through Mar 31, daily
-    if month in (11, 12, 1, 2, 3):
+    # Module 4: NCAAB KenPom -- Nov 1 through Apr 7 (covers NCAA Tournament final Apr 6)
+    if month in (11, 12, 1, 2, 3) or (month == 4 and day <= 7):
         active.append("ncaab_kenpom")
 
     # Module 5: NCAAB Conf Tournament -- Mar 1-15
