@@ -1,0 +1,14 @@
+{
+  "id": "extract",
+  "name": "Extract Sport Output",
+  "type": "n8n-nodes-base.code",
+  "typeVersion": 2,
+  "position": [
+    980,
+    400
+  ],
+  "parameters": {
+    "mode": "runOnceForEachItem",
+    "jsCode": "const response = $input.item.json;\nconst srcItem = $('Build 3 Requests').all()[$itemIndex];\nconst sport = srcItem?.json?.sport || 'UNKNOWN';\nconst dateShort = srcItem?.json?.dateShort;\nconst todayDate = srcItem?.json?.todayDate;\nconst text = response?.candidates?.[0]?.content?.parts?.[0]?.text || ('ERROR: No response from Gemini for ' + sport);\nreturn { json: { sport, dateShort, todayDate, text } };"
+  }
+}

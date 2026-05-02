@@ -261,17 +261,10 @@ def main():
         output_empty("Active modules ran but no qualifying picks found.", bankroll, peak, modules)
         sys.exit(2 if had_errors else 0)
 
-    # Staking
-    all_picks, in_drawdown = apply_portfolio_limits(all_picks, bankroll, peak, prior_exposure, in_drawdown)
-    save_drawdown_state(in_drawdown)
-
-    # Separate placed vs skipped
-    placed = [p for p in all_picks if p.bet_size > 0]
-    skipped = [p for p in all_picks if p.bet_size == 0]
-
-    # Update daily exposure
-    new_exposure = sum(p.bet_size for p in placed)
-    save_daily_exposure(today, prior_exposure + new_exposure, placed)
+    # Sort by edge descending, take top 3
+    all_picks.sort(key=lambda p: p.edge_pct, reverse=True)
+    placed = all_picks[:3]
+    skipped = all_picks[3:]
 
     # Output
     output = build_output(placed, skipped, bankroll, peak, modules,

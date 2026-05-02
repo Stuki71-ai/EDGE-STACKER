@@ -102,8 +102,8 @@ def build_email(placed, skipped, bankroll, peak, modules_run,
             direction = "OVER" if "OVER" in p.pick_description else "UNDER"
 
             h.append(f"{star}{p.matchup}:<br>")
-            h.append(f"{player} - {stat_full} - {direction} {line}<br>")
-            h.append(f"Bet ${p.bet_size:,.2f} | Game: {p.game_time}<br><br>")
+            h.append(f"{player} - {stat_full} - {direction} {line} | Edge: {p.edge_pct:.1%}<br>")
+            h.append(f"Game: {p.game_time}<br><br>")
 
     h.append("</div>")
 
