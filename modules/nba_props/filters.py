@@ -5,12 +5,20 @@ from staking import american_to_prob, norm_cdf, calculate_vig
 logger = logging.getLogger("edge_stacker")
 
 
-def prop_edge(projection, line, stat, over_odds_raw, under_odds_raw):
+MAX_EDGE = 0.20  # No real sports betting edge exceeds 20%
+
+
+def prop_edge(projection, line, stat, over_odds_raw, under_odds_raw, actual_std=None):
     """
     Compare projection to line using normal distribution.
+    Uses actual std from player's last 10 games if provided,
+    falls back to fixed percentage if not.
     Returns: (direction, edge, model_prob, odds_to_bet) or (None, 0, 0, 0)
     """
-    std = projection * config.STAT_STD_PCT.get(stat, 0.22)
+    if actual_std is not None and actual_std > 0:
+        std = actual_std
+    else:
+        std = projection * config.STAT_STD_PCT.get(stat, 0.22)
     if std < 0.5:
         std = 0.5
 
@@ -22,6 +30,10 @@ def prop_edge(projection, line, stat, over_odds_raw, under_odds_raw):
 
     over_edge = over_prob - over_implied
     under_edge = under_prob - under_implied
+
+    # Cap edge at MAX_EDGE — anything higher means model overconfidence
+    over_edge = min(over_edge, MAX_EDGE)
+    under_edge = min(under_edge, MAX_EDGE)
 
     if over_edge >= config.PROP_MIN_EDGE and over_edge > under_edge:
         return "OVER", over_edge, over_prob, over_odds_raw

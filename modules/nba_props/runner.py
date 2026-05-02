@@ -155,9 +155,13 @@ def run(today):
                 minutes_stable = proj_result["minutes_stable"]
                 l10_avg = round(sum(float(g[stat]) for g in player_games) / len(player_games), 1)
 
-                # Calculate edge
+                # Compute actual std from last 10 games (replaces fixed % for accuracy)
+                stat_values = [float(g[stat]) for g in player_games]
+                actual_std = (sum((v - l10_avg) ** 2 for v in stat_values) / len(stat_values)) ** 0.5
+
+                # Calculate edge using actual std from player's game log
                 direction, edge, model_prob, odds_to_bet = filters.prop_edge(
-                    projection, line, stat, over_odds, under_odds
+                    projection, line, stat, over_odds, under_odds, actual_std=actual_std
                 )
 
                 if direction is None:
