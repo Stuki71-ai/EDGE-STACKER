@@ -109,7 +109,7 @@ class TestBuildOutput:
         output = build_output(placed, skipped, 5000, 5200, ["ncaab_conf_tourney"])
 
         email = output["email_body"]
-        assert "NC STATE" in email or "Edge:" in email
+        assert "NC STATE" in email
 
     def test_empty_picks_no_crash(self):
         output = build_output([], [], 5000, 5000, ["nba_props"])
