@@ -101,9 +101,8 @@ def build_email(placed, skipped, bankroll, peak, modules_run,
             line = ctx.get("line", "")
             direction = "OVER" if "OVER" in p.pick_description else "UNDER"
 
-            h.append(f"{star}{p.matchup}:<br>")
-            h.append(f"{player} - {stat_full} - {direction} {line}<br>")
-            h.append(f"Game: {p.game_time}<br><br>")
+            h.append(f"{star}{p.matchup} at {p.game_time}:<br>")
+            h.append(f"{player} - {stat_full} - {direction} {line}<br><br>")
 
     h.append("</div>")
 
