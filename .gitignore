@@ -7,3 +7,11 @@ logs/
 daily_state.json
 *.egg-info/
 .pytest_cache/
+*.txt
+build_*.py
+create_*.py
+edit_*.py
+gen_*.py
+*.js
+node_*.json
+workflow_*.json
