@@ -265,8 +265,7 @@ def main():
         output_empty("Active modules ran but no qualifying picks found.", bankroll, peak, modules)
         sys.exit(2 if had_errors else 0)
 
-    # Sort by RAW edge (uncapped) descending — capped edge_pct ties at 20% are meaningless
-    # Take top 3 across all modules
+    # Sort by RAW edge (uncapped) — when 20% cap engages, ties at edge_pct become meaningless
     all_picks.sort(key=lambda p: (p.model_prob - p.implied_prob), reverse=True)
     placed = all_picks[:3]
     skipped = all_picks[3:]
