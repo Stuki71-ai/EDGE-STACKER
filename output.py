@@ -31,8 +31,10 @@ def build_output(placed, skipped, bankroll, peak, modules_run,
     total_wagered = sum(p.bet_size for p in placed)
     total_potential = sum(p.potential_win for p in placed)
 
+    # Build subject line: "EDGE STACKER / <MODULE1> / <MODULE2> - DD.MM.YYYY - X picks"
     output = {
         "date": date_str,
+        "subject": _build_subject(date_str, placed),
         "run_time": run_time,
         "bankroll": bankroll,
         "peak_bankroll": peak,
@@ -92,8 +94,6 @@ def build_email(placed, skipped, bankroll, peak, modules_run,
         module_picks.setdefault(p.module, []).append(p)
 
     for module, picks in module_picks.items():
-        h.append(f"<b>{MODULE_NAMES.get(module, module.upper())}</b><br><br>")
-
         for p in picks:
             star = "&#9733; " if p.grade.startswith("A") else ""
             ctx = p.context
@@ -167,6 +167,41 @@ def _skipped_to_dict(p):
         "grade": p.grade,
         "staking_note": p.staking_note,
     }
+
+
+def _build_subject(date_str, placed):
+    """Build subject line including module names with picks.
+
+    Format: 'EDGE STACKER / NHL SHOTS ON GOAL - 03.05.2026 - 3 picks'
+            'EDGE STACKER / NBA PLAYER PROPS / NHL SHOTS ON GOAL - 03.05.2026 - 5 picks'
+            'EDGE STACKER - 03.05.2026 - sitting out' (no picks)
+    """
+    MODULE_NAMES = {
+        "ncaaf_weather": "NCAAF WEATHER UNDERS",
+        "nba_props": "NBA PLAYER PROPS",
+        "nhl_sog": "NHL SHOTS ON GOAL",
+        "ncaaf_bowls": "NCAAF BOWL UNDERDOGS",
+        "ncaab_kenpom": "NCAAB KENPOM DISAGREEMENT",
+        "ncaab_conf_tourney": "NCAAB CONFERENCE TOURNAMENT",
+    }
+
+    # Reverse-sort the date YYYY-MM-DD -> DD.MM.YYYY
+    parts = date_str.split("-")
+    date_eu = f"{parts[2]}.{parts[1]}.{parts[0]}" if len(parts) == 3 else date_str
+
+    if not placed:
+        return f"EDGE STACKER - {date_eu} - sitting out"
+
+    # Get unique modules in order of first appearance (preserves edge-sort order)
+    seen = []
+    for p in placed:
+        if p.module not in seen:
+            seen.append(p.module)
+    module_part = " / ".join(MODULE_NAMES.get(m, m.upper()) for m in seen)
+
+    n = len(placed)
+    pick_word = "pick" if n == 1 else "picks"
+    return f"EDGE STACKER / {module_part} - {date_eu} - {n} {pick_word}"
 
 
 def _extract_game_date(picks):
