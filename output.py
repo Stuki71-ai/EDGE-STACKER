@@ -69,10 +69,11 @@ def build_email(placed, skipped, bankroll, peak, modules_run,
     kelly_label = f"{'Eighth' if km == KELLY_MULTIPLIER_DRAWDOWN else 'Quarter'} ({km})"
     exposure_pct = (daily_exposure / daily_limit * 100) if daily_limit > 0 else 0
 
-    STAT_FULL = {"PTS": "Points", "REB": "Rebounds", "AST": "Assists"}
+    STAT_FULL = {"PTS": "Points", "REB": "Rebounds", "AST": "Assists", "S": "Shots"}
     MODULE_NAMES = {
         "ncaaf_weather": "NCAAF WEATHER UNDERS",
         "nba_props": "NBA PLAYER PROPS",
+        "nhl_sog": "NHL SHOTS ON GOAL",
         "ncaaf_bowls": "NCAAF BOWL UNDERDOGS",
         "ncaab_kenpom": "NCAAB KENPOM DISAGREEMENT",
         "ncaab_conf_tourney": "NCAAB CONFERENCE TOURNAMENT",
