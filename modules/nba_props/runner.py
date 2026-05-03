@@ -123,6 +123,12 @@ def run(today):
                 if not player_games:
                     continue
 
+                # SAFETY: Player must have played within last 14 days (catches inactive players
+                # whose injury status isn't perfectly listed — e.g., season-long IR)
+                if not _played_recently(player_games, max_days=14):
+                    logger.debug(f"Skipped {player_name}: no recent games")
+                    continue
+
                 # SPEC FILTER 1: Player has >= 10 games this season
                 if len(player_games) < config.PROP_MIN_GAMES:
                     continue
@@ -294,13 +300,38 @@ def _prioritize_games(events, injury_map, drtg_map):
 
 
 def _is_player_injured(player_name, injury_map):
-    """Check if a player is listed as Out or Doubtful."""
-    name_lower = player_name.lower()
+    """Check if a player is listed as Out or Doubtful (case-insensitive name match)."""
+    name_lower = player_name.lower().strip()
+    # Also try variations: drop "Jr." / "Sr." / "II" / "III" suffixes
+    name_normalized = name_lower.replace(" jr.", "").replace(" sr.", "").replace(" ii", "").replace(" iii", "").strip()
     for team_injuries in injury_map.values():
         for inj in team_injuries:
-            if inj.get("player_name", "").lower() == name_lower:
+            inj_name = inj.get("player_name", "").lower().strip()
+            inj_normalized = inj_name.replace(" jr.", "").replace(" sr.", "").replace(" ii", "").replace(" iii", "").strip()
+            if inj_name == name_lower or inj_normalized == name_normalized:
                 return True
     return False
+
+
+def _played_recently(player_games, max_days=14):
+    """Check if player played within the last N days.
+
+    Catches inactive players whose injury status isn't on the active injury list
+    (e.g., season-long IR, suspended, retired).
+    """
+    if not player_games:
+        return False
+    last_game_date_str = player_games[0].get("GAME_DATE", "")
+    if not last_game_date_str:
+        return True  # If no date data, give benefit of doubt (don't break old data)
+    try:
+        from datetime import datetime, timezone
+        last_game = datetime.fromisoformat(last_game_date_str.replace("Z", "+00:00"))
+        now = datetime.now(timezone.utc)
+        days_since = (now - last_game).days
+        return days_since <= max_days
+    except (ValueError, TypeError):
+        return True  # Parse failure: don't block
 
 
 _gamelog_cache = {}

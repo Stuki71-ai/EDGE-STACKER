@@ -36,7 +36,7 @@ def get_player_gamelog(espn_player_id, last_n=10):
     # Collect ALL regular season games across all monthly categories
     all_games = []
     for season_type in data.get("seasonTypes", []):
-        if "Regular" not in season_type.get("displayName", ""):
+        if "Regular" not in season_type.get("displayName", "") and "Postseason" not in season_type.get("displayName", ""):
             continue
         for cat in season_type.get("categories", []):
             for event in cat.get("events", []):
@@ -47,6 +47,7 @@ def get_player_gamelog(espn_player_id, last_n=10):
                 event_id = event.get("eventId", "") or event.get("id", "")
                 event_info = data.get("events", {}).get(str(event_id), {})
                 team_id = event_info.get("team", {}).get("id", "")
+                game_date = event_info.get("gameDate", "")
 
                 game = {
                     "PTS": float(stats[idx.get("PTS", 13)]),
@@ -54,6 +55,7 @@ def get_player_gamelog(espn_player_id, last_n=10):
                     "AST": float(stats[idx.get("AST", 8)]),
                     "MIN": float(stats[idx.get("MIN", 0)]),
                     "TEAM_ID": str(team_id),
+                    "GAME_DATE": game_date,
                 }
                 all_games.append(game)
 
