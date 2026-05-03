@@ -49,6 +49,10 @@ def active_modules(today: date) -> list:
     if month == 3 and day <= 15:
         active.append("ncaab_conf_tourney")
 
+    # Module 6: NHL Shots on Goal -- Oct 7 through Jun 20 (regular season + Stanley Cup playoffs)
+    if (month == 10 and day >= 7) or month in (11, 12, 1, 2, 3, 4, 5) or (month == 6 and day <= 20):
+        active.append("nhl_sog")
+
     return active
 
 
