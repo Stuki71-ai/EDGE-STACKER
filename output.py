@@ -113,8 +113,10 @@ def build_email(placed, skipped, bankroll, peak, modules_run,
 def output_empty(message, bankroll=0.0, peak=0.0, modules_run=None):
     """Output for no-picks scenario."""
     now = datetime.now(timezone(timedelta(hours=-5)))
+    date_str = now.strftime("%Y-%m-%d")
     output = {
-        "date": now.strftime("%Y-%m-%d"),
+        "date": date_str,
+        "subject": _build_subject(date_str, []),
         "run_time": now.strftime(config.TIME_FMT),
         "bankroll": bankroll,
         "peak_bankroll": peak,
@@ -173,9 +175,11 @@ def _build_subject(date_str, placed):
     """Build subject line including module names with picks.
 
     Format: 'EDGE STACKER / NHL SHOTS ON GOAL - 03.05.2026 - 3 picks'
-            'EDGE STACKER / NBA PLAYER PROPS / NHL SHOTS ON GOAL - 03.05.2026 - 5 picks'
+            'EDGE STACKER LOCAL / NBA PLAYER PROPS - ...' when USE_NBA_API_FULL set
             'EDGE STACKER - 03.05.2026 - sitting out' (no picks)
     """
+    import os
+    prefix = "EDGE STACKER LOCAL" if os.environ.get("USE_NBA_API_FULL") else "EDGE STACKER"
     MODULE_NAMES = {
         "ncaaf_weather": "NCAAF WEATHER UNDERS",
         "nba_props": "NBA PLAYER PROPS",
@@ -190,7 +194,7 @@ def _build_subject(date_str, placed):
     date_eu = f"{parts[2]}.{parts[1]}.{parts[0]}" if len(parts) == 3 else date_str
 
     if not placed:
-        return f"EDGE STACKER - {date_eu} - sitting out"
+        return f"{prefix} - {date_eu} - sitting out"
 
     # Get unique modules in order of first appearance (preserves edge-sort order)
     seen = []
@@ -201,7 +205,7 @@ def _build_subject(date_str, placed):
 
     n = len(placed)
     pick_word = "pick" if n == 1 else "picks"
-    return f"EDGE STACKER / {module_part} - {date_eu} - {n} {pick_word}"
+    return f"{prefix} / {module_part} - {date_eu} - {n} {pick_word}"
 
 
 def _extract_game_date(picks):

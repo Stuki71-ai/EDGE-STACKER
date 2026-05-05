@@ -1,10 +1,19 @@
 import logging
+import os
 from datetime import datetime, timezone, timedelta
 from shared.pick import Pick
-from shared import espn_nba
 from staking import american_to_prob, assign_grade
 import config
 from . import projections, odds, filters
+
+# Switch data source: USE_NBA_API_FULL=1 uses real NBA Stats API (local PC),
+# otherwise ESPN (works on VPS but limited data)
+if os.environ.get("USE_NBA_API_FULL"):
+    from shared import nba_api_full as espn_nba
+    USING_FULL_API = True
+else:
+    from shared import espn_nba
+    USING_FULL_API = False
 
 logger = logging.getLogger("edge_stacker")
 
@@ -20,13 +29,23 @@ def run(today):
     """
     season = _get_season(today)
 
-    # Get team defensive stats from ESPN (works from VPS, unlike nba_api)
+    # Get team defensive stats (true DEF_RATING from nba_api, or proxy from ESPN)
     try:
         drtg_map = espn_nba.get_team_defensive_stats()
-        logger.info(f"ESPN DRTG loaded for {len(drtg_map)} teams")
+        source = "nba_api" if USING_FULL_API else "ESPN"
+        logger.info(f"{source} DRTG loaded for {len(drtg_map)} teams")
     except Exception as e:
         logger.warning(f"DRTG unavailable, using league average: {e}")
         drtg_map = {}
+
+    # PACE map (only available with full nba_api)
+    pace_map = {}
+    if USING_FULL_API:
+        try:
+            pace_map = espn_nba.get_team_pace()
+            logger.info(f"nba_api PACE loaded for {len(pace_map)} teams")
+        except Exception as e:
+            logger.warning(f"PACE unavailable: {e}")
 
     # Get injury report from ESPN
     try:
@@ -163,6 +182,19 @@ def run(today):
                 minutes_stable = proj_result["minutes_stable"]
                 actual_std = proj_result["std"]  # Full-season EWMA std
                 l10_avg = round(sum(float(g[stat]) for g in player_games[:10]) / min(10, len(player_games)), 1)
+
+                # PACE adjustment (only with full nba_api): combined game pace affects
+                # total possessions/scoring opportunities. Avg pace is ~100.
+                pace_factor = 1.0
+                if USING_FULL_API and pace_map:
+                    home_pace = pace_map.get(home_team_id, 100.0)
+                    away_pace = pace_map.get(away_team_id, 100.0)
+                    game_pace = (home_pace + away_pace) / 2.0
+                    pace_factor = game_pace / 100.0
+                    # Cap pace adjustment to ±10% — it's a real factor but not enormous
+                    pace_factor = max(0.90, min(1.10, pace_factor))
+                    if stat in ("PTS", "AST"):  # PACE affects scoring/playmaking, less REB
+                        projection *= pace_factor
 
                 # LINE SANITY CHECK: skip if projection diverges >35% from line.
                 # Tighter than NHL (50%) because NBA has higher prop vig — books are
