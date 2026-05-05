@@ -3,9 +3,11 @@ import config
 
 logger = logging.getLogger("edge_stacker")
 
-# EWMA decay factor — most recent game weight=1.0, n games ago weight=0.85^n
-# Half-life ~4-5 games — matches sharp model norms
-EWMA_DECAY = 0.85
+# EWMA decay factor — most recent weight=1.0, n games ago weight=DECAY^n
+# 0.92 = half-life ~8-9 games — less reactive to short hot/cold streaks,
+# more anchored to season-long performance. Matches what sharps do when
+# they don't have position-vs-position defense data: regularize harder.
+EWMA_DECAY = 0.92
 
 
 def ewma(values, decay=EWMA_DECAY):

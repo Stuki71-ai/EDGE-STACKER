@@ -164,8 +164,10 @@ def run(today):
                 actual_std = proj_result["std"]  # Full-season EWMA std
                 l10_avg = round(sum(float(g[stat]) for g in player_games[:10]) / min(10, len(player_games)), 1)
 
-                # LINE SANITY CHECK: skip if projection diverges >50% from line.
-                if line > 0 and abs(projection - line) / line > 0.5:
+                # LINE SANITY CHECK: skip if projection diverges >35% from line.
+                # Tighter than NHL (50%) because NBA has higher prop vig — books are
+                # generally sharper, our model needs more regularization here.
+                if line > 0 and abs(projection - line) / line > 0.35:
                     logger.debug(f"Line sanity skip {player_name} {stat}: proj={projection} line={line}")
                     continue
 
@@ -178,14 +180,14 @@ def run(today):
                     projection, line, stat, over_odds, under_odds, actual_std=actual_std
                 )
 
-                # MARKET ANCHOR: always blend model with market consensus.
-                # The market (no-vig median across all books) is the wisdom of crowds.
-                # 70% model + 30% market — keeps our model's signal but anchors to consensus.
+                # MARKET ANCHOR: blend 50/50 with market consensus.
+                # Without position-vs-position defense data, we lean harder on
+                # market wisdom. NBA prop books are sharp; consensus is signal.
                 fair_over = stat_data.get("fair_over_prob")
                 fair_under = stat_data.get("fair_under_prob")
                 fair_market = fair_over if direction == "OVER" else fair_under
                 if fair_market is not None:
-                    model_prob = 0.7 * model_prob + 0.3 * fair_market
+                    model_prob = 0.5 * model_prob + 0.5 * fair_market
                     edge = min(model_prob - american_to_prob(odds_to_bet), filters.MAX_EDGE)
                     if edge < config.PROP_MIN_EDGE:
                         logger.debug(f"Market anchor: {player_name} edge dropped below threshold")
