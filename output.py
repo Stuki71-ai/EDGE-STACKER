@@ -85,9 +85,8 @@ def build_email(placed, skipped, bankroll, peak, modules_run,
     h.append("<div style='font-family:Consolas,monospace;font-size:13px;line-height:1.6;color:#222'>")
 
     if not placed:
-        h.append("No qualifying picks today - sitting out.")
-        h.append("</div>")
-        return "".join(h)
+        # No body when sitting out — subject line is enough
+        return ""
 
     module_picks = {}
     for p in placed:
@@ -133,7 +132,7 @@ def output_empty(message, bankroll=0.0, peak=0.0, modules_run=None):
             "total_wagered": 0,
             "total_potential_win": 0,
         },
-        "email_body": f"EDGE STACKER \u2014 {message}\nNo qualifying picks \u2014 sitting out.",
+        "email_body": "",  # No body when sitting out \u2014 subject says it all
     }
     print(json.dumps(output, indent=2))
 
