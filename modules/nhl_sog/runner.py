@@ -111,9 +111,9 @@ def run(today):
             if calculate_vig(over_odds, under_odds) > filters.MAX_VIG:
                 continue
 
-            # Fetch gamelog (cache per-player)
+            # Fetch FULL-SEASON gamelog (cache per-player). EWMA weights recent more.
             if player_name not in gamelog_cache:
-                gamelog_cache[player_name] = espn_nhl.get_player_gamelog(espn_id, last_n=10)
+                gamelog_cache[player_name] = espn_nhl.get_player_gamelog(espn_id, last_n=None)
             player_games = gamelog_cache[player_name]
 
             if not player_games:
@@ -137,11 +137,14 @@ def run(today):
             if not proj_result:
                 continue
             projection = proj_result["projection"]
-            l10_avg = round(sum(float(g["S"]) for g in player_games) / len(player_games), 1)
+            actual_std = proj_result["std"]  # EWMA std over full season
+            l10_avg = round(sum(float(g["S"]) for g in player_games[:10]) / min(10, len(player_games)), 1)
 
-            # Compute actual std from last 10 games
-            shots = [float(g["S"]) for g in player_games]
-            actual_std = (sum((v - l10_avg) ** 2 for v in shots) / len(shots)) ** 0.5
+            # LINE SANITY CHECK: skip if projection diverges >50% from line.
+            # Books usually know something when divergence is that big.
+            if line > 0 and abs(projection - line) / line > 0.5:
+                logger.debug(f"NHL line sanity skip {player_name}: proj={projection} line={line}")
+                continue
 
             # Edge
             direction, edge, model_prob, odds_to_bet = filters.sog_edge(

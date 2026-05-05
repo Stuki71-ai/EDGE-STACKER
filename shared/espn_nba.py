@@ -59,7 +59,10 @@ def get_player_gamelog(espn_player_id, last_n=10):
                 }
                 all_games.append(game)
 
-    # Games are ordered most recent first — take last N
+    # Games are ordered most recent first
+    # last_n=None or 0 returns full season, otherwise slice
+    if last_n is None or last_n == 0:
+        return all_games
     return all_games[:last_n]
 
 

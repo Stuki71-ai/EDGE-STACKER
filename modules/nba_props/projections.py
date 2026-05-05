@@ -3,28 +3,66 @@ import config
 
 logger = logging.getLogger("edge_stacker")
 
+# EWMA decay factor — most recent game weight=1.0, n games ago weight=0.85^n
+# Half-life ~4-5 games — matches sharp model norms
+EWMA_DECAY = 0.85
+
+
+def ewma(values, decay=EWMA_DECAY):
+    """Exponentially weighted moving average.
+
+    Assumes values[0] is most recent, values[-1] is oldest.
+    Recent games get more weight; older games stabilize the estimate.
+    """
+    if not values:
+        return 0.0
+    n = len(values)
+    weights = [decay ** i for i in range(n)]
+    weight_sum = sum(weights)
+    if weight_sum == 0:
+        return sum(values) / n
+    return sum(v * w for v, w in zip(values, weights)) / weight_sum
+
+
+def weighted_std(values, mean, decay=EWMA_DECAY):
+    """Exponentially weighted standard deviation."""
+    if not values:
+        return 0.0
+    n = len(values)
+    weights = [decay ** i for i in range(n)]
+    weight_sum = sum(weights)
+    if weight_sum == 0:
+        return 0.0
+    var = sum(w * (v - mean) ** 2 for v, w in zip(values, weights)) / weight_sum
+    return var ** 0.5
+
 
 def project_player_stat(player_games, stat, opponent_drtg, teammate_out):
     """
-    Build per-player projection from last 10 games.
+    Build per-player projection using EWMA over full season.
 
     Args:
-        player_games: list of dicts from PlayerGameLog (last 10 games)
+        player_games: list of dicts from gamelog (full season, most recent first)
         stat: "PTS", "REB", or "AST"
         opponent_drtg: float (opponent's defensive rating)
         teammate_out: bool (top-2 minutes player on same team is OUT)
 
     Returns:
-        dict with projection, minutes_stable, minutes_very_stable, sample_size, avg_minutes
+        dict with projection, std, minutes_stable, sample_size, avg_minutes
     """
+    if not player_games:
+        return None
+
     values = [float(g[stat]) for g in player_games]
     minutes = [float(g["MIN"]) for g in player_games]
 
-    avg = sum(values) / len(values)
-    avg_min = sum(minutes) / len(minutes)
-    min_std = (sum((m - avg_min) ** 2 for m in minutes) / len(minutes)) ** 0.5
+    # EWMA-based projection (recent games weighted heavier, but full season stabilizes)
+    avg = ewma(values)
+    avg_min = ewma(minutes)
+    std = weighted_std(values, avg)
+    min_std = weighted_std(minutes, avg_min)
 
-    # Opponent adjustment
+    # Opponent adjustment (same as spec)
     opp_factor = opponent_drtg / config.LEAGUE_AVG_DRTG
 
     if stat in ("PTS", "AST"):
@@ -36,10 +74,12 @@ def project_player_stat(player_games, stat, opponent_drtg, teammate_out):
 
     # Teammate absence boost
     if teammate_out and stat in ("PTS", "AST"):
-        adjusted *= 1.12  # +12% usage redistribution
+        adjusted *= 1.12
 
     return {
         "projection": round(adjusted, 1),
+        "std": round(std, 2),
+        "raw_avg": round(avg, 1),
         "minutes_stable": min_std < 5.0,
         "minutes_very_stable": min_std < 3.0,
         "sample_size": len(player_games),

@@ -153,19 +153,25 @@ def run(today):
                     teammate_out = False
                     teammate_name = None
 
-                # SPEC: Full projection model with game log data
+                # EWMA-based projection over full season (from projections module)
                 proj_result = projections.project_player_stat(
                     player_games, stat, opp_drtg, teammate_out
                 )
+                if not proj_result:
+                    continue
                 projection = proj_result["projection"]
                 minutes_stable = proj_result["minutes_stable"]
-                l10_avg = round(sum(float(g[stat]) for g in player_games) / len(player_games), 1)
+                actual_std = proj_result["std"]  # Full-season EWMA std
+                l10_avg = round(sum(float(g[stat]) for g in player_games[:10]) / min(10, len(player_games)), 1)
 
-                # Compute actual std from last 10 games (replaces fixed % for accuracy)
-                stat_values = [float(g[stat]) for g in player_games]
-                actual_std = (sum((v - l10_avg) ** 2 for v in stat_values) / len(stat_values)) ** 0.5
+                # LINE SANITY CHECK: skip if projection diverges >50% from line.
+                # When books and our model disagree this much, books usually know
+                # something we don't (role change, injury, matchup). Don't chase phantom edges.
+                if line > 0 and abs(projection - line) / line > 0.5:
+                    logger.debug(f"Line sanity skip {player_name} {stat}: proj={projection} line={line}")
+                    continue
 
-                # Calculate edge using actual std from player's game log
+                # Calculate edge using actual std (full season)
                 direction, edge, model_prob, odds_to_bet = filters.prop_edge(
                     projection, line, stat, over_odds, under_odds, actual_std=actual_std
                 )
@@ -338,14 +344,15 @@ _gamelog_cache = {}
 
 
 def _get_player_games_espn(player_name):
-    """Get player game log via ESPN API (cached per player per run)."""
+    """Get full-season player game log via ESPN API (cached per player per run)."""
     if player_name in _gamelog_cache:
         return _gamelog_cache[player_name]
     espn_id = espn_nba.find_espn_player_id(player_name)
     if not espn_id:
         _gamelog_cache[player_name] = []
         return []
-    games = espn_nba.get_player_gamelog(espn_id, last_n=10)
+    # last_n=None returns full season — EWMA model uses all data with recent weighted heavier
+    games = espn_nba.get_player_gamelog(espn_id, last_n=None)
     _gamelog_cache[player_name] = games
     return games
 
