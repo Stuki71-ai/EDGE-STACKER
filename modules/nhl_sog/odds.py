@@ -50,6 +50,7 @@ def extract_props(event_odds):
                         "all_over": [],
                         "all_under": [],
                         "all_lines": [],
+                        "by_book": {},
                     }
 
                 entry = props[player]
@@ -60,18 +61,24 @@ def extract_props(event_odds):
                 if line is not None:
                     entry["all_lines"].append(line)
 
+                if book_name not in entry["by_book"]:
+                    entry["by_book"][book_name] = {}
+
                 if side == "Over" and price is not None:
                     entry["all_over"].append(price)
+                    entry["by_book"][book_name]["over"] = price
                     if entry["best_over_odds"] is None or price > entry["best_over_odds"]:
                         entry["best_over_odds"] = price
                         entry["best_over_book"] = book_name
                 elif side == "Under" and price is not None:
                     entry["all_under"].append(price)
+                    entry["by_book"][book_name]["under"] = price
                     if entry["best_under_odds"] is None or price > entry["best_under_odds"]:
                         entry["best_under_odds"] = price
                         entry["best_under_book"] = book_name
 
-    # Set median consensus line + median consensus odds
+    # Set median consensus line, median consensus odds, market no-vig fair probabilities
+    from staking import american_to_prob
     for sd in props.values():
         all_lines = sorted(sd["all_lines"])
         if all_lines:
@@ -82,5 +89,23 @@ def extract_props(event_odds):
             if ol:
                 mid = len(ol) // 2
                 sd[key] = ol[mid] if len(ol) % 2 else (ol[mid - 1] + ol[mid]) // 2
+
+        # Market no-vig fair probability (median across books with both sides)
+        no_vig_overs = []
+        no_vig_unders = []
+        for book_pair in sd.get("by_book", {}).values():
+            if "over" in book_pair and "under" in book_pair:
+                over_p = american_to_prob(book_pair["over"])
+                under_p = american_to_prob(book_pair["under"])
+                total = over_p + under_p
+                if total > 0:
+                    no_vig_overs.append(over_p / total)
+                    no_vig_unders.append(under_p / total)
+        if no_vig_overs:
+            no_vig_overs.sort()
+            no_vig_unders.sort()
+            mid = len(no_vig_overs) // 2
+            sd["fair_over_prob"] = no_vig_overs[mid]
+            sd["fair_under_prob"] = no_vig_unders[mid]
 
     return props

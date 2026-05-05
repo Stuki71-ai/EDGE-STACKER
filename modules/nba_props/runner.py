@@ -165,16 +165,32 @@ def run(today):
                 l10_avg = round(sum(float(g[stat]) for g in player_games[:10]) / min(10, len(player_games)), 1)
 
                 # LINE SANITY CHECK: skip if projection diverges >50% from line.
-                # When books and our model disagree this much, books usually know
-                # something we don't (role change, injury, matchup). Don't chase phantom edges.
                 if line > 0 and abs(projection - line) / line > 0.5:
                     logger.debug(f"Line sanity skip {player_name} {stat}: proj={projection} line={line}")
                     continue
+
+                # BACK-TO-BACK FATIGUE: if player played yesterday, apply -5% to projection
+                if _played_yesterday(player_games):
+                    projection *= 0.95
 
                 # Calculate edge using actual std (full season)
                 direction, edge, model_prob, odds_to_bet = filters.prop_edge(
                     projection, line, stat, over_odds, under_odds, actual_std=actual_std
                 )
+
+                # MARKET ANCHOR: regularize model toward consensus if it's too aggressive.
+                # If our model_prob differs from the market no-vig fair prob by >25%,
+                # the market (consensus across books, vig-adjusted) is likely closer to truth.
+                fair_over = stat_data.get("fair_over_prob")
+                fair_under = stat_data.get("fair_under_prob")
+                fair_market = fair_over if direction == "OVER" else fair_under
+                if fair_market is not None and abs(model_prob - fair_market) > 0.25:
+                    # Pull model 50% toward market consensus
+                    model_prob = 0.5 * model_prob + 0.5 * fair_market
+                    edge = min(model_prob - american_to_prob(odds_to_bet), filters.MAX_EDGE if hasattr(filters, 'MAX_EDGE') else 0.20)
+                    if edge < config.PROP_MIN_EDGE:
+                        logger.debug(f"Market anchor regularized {player_name}: edge dropped below threshold")
+                        continue
 
                 if direction is None:
                     continue
@@ -317,6 +333,24 @@ def _is_player_injured(player_name, injury_map):
             if inj_name == name_lower or inj_normalized == name_normalized:
                 return True
     return False
+
+
+def _played_yesterday(player_games):
+    """Back-to-back fatigue: did player play yesterday with significant minutes?"""
+    if not player_games:
+        return False
+    last_game_date_str = player_games[0].get("GAME_DATE", "")
+    if not last_game_date_str:
+        return False
+    try:
+        from datetime import datetime, timezone
+        last_game = datetime.fromisoformat(last_game_date_str.replace("Z", "+00:00"))
+        now = datetime.now(timezone.utc)
+        days_since = (now - last_game).days
+        # Played yesterday AND played 15+ min (real action, not garbage time)
+        return days_since == 1 and float(player_games[0].get("MIN", 0)) >= 15
+    except (ValueError, TypeError):
+        return False
 
 
 def _played_recently(player_games, max_days=14):

@@ -141,10 +141,13 @@ def run(today):
             l10_avg = round(sum(float(g["S"]) for g in player_games[:10]) / min(10, len(player_games)), 1)
 
             # LINE SANITY CHECK: skip if projection diverges >50% from line.
-            # Books usually know something when divergence is that big.
             if line > 0 and abs(projection - line) / line > 0.5:
                 logger.debug(f"NHL line sanity skip {player_name}: proj={projection} line={line}")
                 continue
+
+            # BACK-TO-BACK FATIGUE: if player played yesterday, -5% projection
+            if _played_yesterday(player_games):
+                projection *= 0.95
 
             # Edge
             direction, edge, model_prob, odds_to_bet = filters.sog_edge(
@@ -152,6 +155,17 @@ def run(today):
             )
             if direction is None:
                 continue
+
+            # MARKET ANCHOR: regularize model toward market consensus if it's too aggressive.
+            fair_over = sd.get("fair_over_prob")
+            fair_under = sd.get("fair_under_prob")
+            fair_market = fair_over if direction == "OVER" else fair_under
+            if fair_market is not None and abs(model_prob - fair_market) > 0.25:
+                model_prob = 0.5 * model_prob + 0.5 * fair_market
+                edge = min(model_prob - american_to_prob(odds_to_bet), filters.MAX_EDGE)
+                if edge < filters.MIN_EDGE:
+                    logger.debug(f"NHL market anchor regularized {player_name}: edge below threshold")
+                    continue
 
             # Filter pipeline
             passes, reason = filters.passes_filters(player_games, position, sd, edge)
@@ -260,6 +274,22 @@ def _is_player_injured(player_name, injury_map):
             if inj_name == name_lower or inj_normalized == name_normalized:
                 return True
     return False
+
+
+def _played_yesterday(player_games):
+    """Back-to-back: did player play yesterday with 15+ min TOI?"""
+    if not player_games:
+        return False
+    last = player_games[0].get("GAME_DATE", "")
+    if not last:
+        return False
+    try:
+        last_game = datetime.fromisoformat(last.replace("Z", "+00:00"))
+        days = (datetime.now(timezone.utc) - last_game).days
+        # 15+ min TOI = 900 seconds
+        return days == 1 and float(player_games[0].get("TOI_SEC", 0)) >= 900
+    except (ValueError, TypeError):
+        return False
 
 
 def _played_recently(player_games, max_days=14):

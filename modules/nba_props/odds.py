@@ -61,6 +61,8 @@ def extract_props(event_odds):
                         "all_over": [],
                         "all_under": [],
                         "all_lines": [],
+                        # Per-book entries for de-vigging: {book_name: {over: x, under: y}}
+                        "by_book": {},
                     }
 
                 entry = props[player][stat]
@@ -71,25 +73,32 @@ def extract_props(event_odds):
                 if line is not None:
                     entry["all_lines"].append(line)
 
+                # Track per-book over/under for de-vigging
+                if book_name not in entry["by_book"]:
+                    entry["by_book"][book_name] = {}
+
                 if side == "Over" and price is not None:
                     entry["all_over"].append(price)
+                    entry["by_book"][book_name]["over"] = price
                     if entry["best_over_odds"] is None or price > entry["best_over_odds"]:
                         entry["best_over_odds"] = price
                         entry["best_over_book"] = book_name
 
                 elif side == "Under" and price is not None:
                     entry["all_under"].append(price)
+                    entry["by_book"][book_name]["under"] = price
                     if entry["best_under_odds"] is None or price > entry["best_under_odds"]:
                         entry["best_under_odds"] = price
                         entry["best_under_book"] = book_name
 
-    # Set consensus line (median across all books) and consensus odds
+    # Set consensus line (median), consensus odds, and market no-vig probabilities
+    from staking import american_to_prob
     for player_props in props.values():
         for stat_data in player_props.values():
             all_lines = sorted(stat_data.get("all_lines", []))
             if all_lines:
                 mid = len(all_lines) // 2
-                stat_data["line"] = all_lines[mid]  # Median line
+                stat_data["line"] = all_lines[mid]
 
             for key, all_key in [("over_odds", "all_over"), ("under_odds", "all_under")]:
                 odds_list = sorted(stat_data[all_key])
@@ -99,5 +108,24 @@ def extract_props(event_odds):
                         stat_data[key] = (odds_list[mid - 1] + odds_list[mid]) // 2
                     else:
                         stat_data[key] = odds_list[mid]
+
+            # Market consensus no-vig probability: median of de-vigged probs across books.
+            # This is the "true" implied probability that sharp models target.
+            no_vig_overs = []
+            no_vig_unders = []
+            for book_pair in stat_data.get("by_book", {}).values():
+                if "over" in book_pair and "under" in book_pair:
+                    over_p = american_to_prob(book_pair["over"])
+                    under_p = american_to_prob(book_pair["under"])
+                    total = over_p + under_p
+                    if total > 0:
+                        no_vig_overs.append(over_p / total)
+                        no_vig_unders.append(under_p / total)
+            if no_vig_overs:
+                no_vig_overs.sort()
+                no_vig_unders.sort()
+                mid = len(no_vig_overs) // 2
+                stat_data["fair_over_prob"] = no_vig_overs[mid]
+                stat_data["fair_under_prob"] = no_vig_unders[mid]
 
     return props
