@@ -168,19 +168,34 @@ def get_team_pace():
 
 
 def get_player_gamelog(player_id, last_n=None):
-    """Get full season player gamelog.
+    """Get full season player gamelog (Regular Season + Playoffs combined).
+
+    During playoffs, regular season ended weeks ago, so the recent-games
+    filter (14-day window) would skip everyone if we only fetched Regular
+    Season. ESPN's gamelog includes both season types by default; nba_api
+    requires explicit calls for each, so we fetch both and merge.
 
     Returns list of dicts (most recent first): PTS, REB, AST, MIN, GAME_DATE, TEAM_ID
     Compatible with espn_nba interface.
     """
     from nba_api.stats.endpoints import PlayerGameLog
+    import pandas as pd
 
     season = _current_season_str()
-    result = _safe_call(PlayerGameLog, player_id=player_id, season=season)
-    if result is None:
+    frames = []
+    for season_type in ("Regular Season", "Playoffs"):
+        result = _safe_call(PlayerGameLog, player_id=player_id, season=season,
+                            season_type_all_star=season_type)
+        if result is None:
+            continue
+        df = result.get_data_frames()[0]
+        if not df.empty:
+            frames.append(df)
+
+    if not frames:
         return []
 
-    df = result.get_data_frames()[0]
+    df = pd.concat(frames, ignore_index=True)
     if df.empty:
         return []
 
@@ -210,6 +225,9 @@ def get_player_gamelog(player_id, last_n=None):
             "TEAM_ID": espn_team_id,  # ESPN team_id, matches runner.py home/away_team_id schema
             "GAME_DATE": iso_date,
         })
+
+    # Sort most-recent-first across both season types (regular season + playoffs merged)
+    games.sort(key=lambda g: g["GAME_DATE"], reverse=True)
 
     if last_n is None or last_n == 0:
         return games
