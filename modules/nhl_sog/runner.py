@@ -39,15 +39,14 @@ def run(today):
         logger.warning(f"NHL injuries unavailable: {e}")
         injury_map = {}
 
-    # Build team ID cache from today's NHL scoreboard
+    # Load ALL 32 NHL teams from ESPN's static teams endpoint. The previous
+    # scoreboard-only approach silently skipped teams whose game wasn't in
+    # ESPN's scoreboard at fetch time but IS on the Odds API slate today,
+    # losing picks for those teams.
     _build_team_id_cache()
 
-    # Pre-fetch player rosters for all teams playing today (avoids per-player searches)
-    all_team_ids = list(_team_id_cache.values())
-    if all_team_ids:
-        espn_nhl.build_player_id_cache(all_team_ids)
-
-    # Get NHL events from Odds API
+    # Get NHL events from Odds API FIRST so we know exactly which teams are
+    # playing today, then fetch rosters only for those teams.
     try:
         events = odds.get_nhl_events()
     except Exception as e:
@@ -59,6 +58,23 @@ def run(today):
         return []
 
     logger.info(f"NHL SOG: Processing {len(events)} games")
+
+    # Pre-fetch player rosters for the teams actually playing today.
+    # Resolve each Odds API team name to ESPN team_id via the (now-complete)
+    # _team_id_cache. Skip with warning if a team can't be resolved.
+    playing_team_ids = set()
+    unresolved = []
+    for event in events:
+        for name in (event.get("home_team", ""), event.get("away_team", "")):
+            tid = _resolve_team_id(name)
+            if tid:
+                playing_team_ids.add(tid)
+            elif name:
+                unresolved.append(name)
+    if unresolved:
+        logger.warning(f"NHL: could not resolve team IDs: {unresolved}")
+    if playing_team_ids:
+        espn_nhl.build_player_id_cache(list(playing_team_ids))
 
     picks = []
     gamelog_cache = {}
@@ -221,39 +237,76 @@ def run(today):
 
 
 def _build_team_id_cache():
+    """Build a complete map of NHL team_displayName -> ESPN team_id.
+
+    Uses ESPN's static /teams endpoint (returns all 32 NHL teams) instead of
+    /scoreboard (only returns games ESPN happens to know about RIGHT NOW,
+    which is often a subset of today's actual slate, especially during
+    playoffs when ESPN can lag).
+
+    Falls back to scoreboard if /teams fails.
+    """
     global _team_id_cache
     try:
         resp = requests.get(
-            "https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard",
+            "https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/teams",
             timeout=10
         )
         resp.raise_for_status()
         data = resp.json()
-        for event in data.get("events", []):
-            comp = event.get("competitions", [{}])[0]
-            for c in comp.get("competitors", []):
-                team = c.get("team", {})
-                name = team.get("displayName", "")
-                tid = str(team.get("id", ""))
-                if name and tid:
-                    _team_id_cache[name] = tid
+        for sport in data.get("sports", []):
+            for league in sport.get("leagues", []):
+                for entry in league.get("teams", []):
+                    team = entry.get("team", {})
+                    name = team.get("displayName", "")
+                    tid = str(team.get("id", ""))
+                    if name and tid:
+                        _team_id_cache[name] = tid
+        logger.info(f"NHL team cache: {len(_team_id_cache)} teams loaded from ESPN /teams")
     except Exception as e:
-        logger.debug(f"NHL team cache: {e}")
+        logger.warning(f"NHL /teams failed, falling back to scoreboard: {e}")
+        try:
+            resp = requests.get(
+                "https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard",
+                timeout=10
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            for event in data.get("events", []):
+                comp = event.get("competitions", [{}])[0]
+                for c in comp.get("competitors", []):
+                    team = c.get("team", {})
+                    name = team.get("displayName", "")
+                    tid = str(team.get("id", ""))
+                    if name and tid:
+                        _team_id_cache[name] = tid
+        except Exception as e2:
+            logger.error(f"NHL team cache also failed via scoreboard: {e2}")
 
 
 def _resolve_team_id(odds_api_team_name):
-    """Map Odds API team name to ESPN team ID via scoreboard cache."""
+    """Map Odds API team name to ESPN team ID via cache.
+
+    Odds API uses accented names ("Montréal Canadiens") while ESPN's /teams
+    endpoint stores plain ASCII ("Montreal Canadiens"). Bare bytes-encode
+    drops the accented char (Montréal -> Montral) instead of mapping it to
+    its base letter (Montréal -> Montreal). Use unicodedata.normalize NFKD
+    to decompose accented chars into base + combining mark, then strip
+    combining marks to get the true base spelling.
+    """
+    import unicodedata
+
+    def _normalize(s):
+        return "".join(
+            c for c in unicodedata.normalize("NFKD", s)
+            if not unicodedata.combining(c)
+        ).lower().strip()
+
     if odds_api_team_name in _team_id_cache:
         return _team_id_cache[odds_api_team_name]
-    # Odds API may use "Montréal Canadiens" with accent — try fuzzy match
-    name_lower = odds_api_team_name.lower()
+    norm_name = _normalize(odds_api_team_name)
     for cached, tid in _team_id_cache.items():
-        if cached.lower() == name_lower:
-            return tid
-        # Strip accents/special chars
-        ascii_cached = cached.encode("ascii", "ignore").decode().lower()
-        ascii_name = odds_api_team_name.encode("ascii", "ignore").decode().lower()
-        if ascii_cached == ascii_name:
+        if _normalize(cached) == norm_name:
             return tid
     return ""
 
