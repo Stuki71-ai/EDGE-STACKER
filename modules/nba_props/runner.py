@@ -178,18 +178,17 @@ def run(today):
                     projection, line, stat, over_odds, under_odds, actual_std=actual_std
                 )
 
-                # MARKET ANCHOR: regularize model toward consensus if it's too aggressive.
-                # If our model_prob differs from the market no-vig fair prob by >25%,
-                # the market (consensus across books, vig-adjusted) is likely closer to truth.
+                # MARKET ANCHOR: always blend model with market consensus.
+                # The market (no-vig median across all books) is the wisdom of crowds.
+                # 70% model + 30% market — keeps our model's signal but anchors to consensus.
                 fair_over = stat_data.get("fair_over_prob")
                 fair_under = stat_data.get("fair_under_prob")
                 fair_market = fair_over if direction == "OVER" else fair_under
-                if fair_market is not None and abs(model_prob - fair_market) > 0.25:
-                    # Pull model 50% toward market consensus
-                    model_prob = 0.5 * model_prob + 0.5 * fair_market
-                    edge = min(model_prob - american_to_prob(odds_to_bet), filters.MAX_EDGE if hasattr(filters, 'MAX_EDGE') else 0.20)
+                if fair_market is not None:
+                    model_prob = 0.7 * model_prob + 0.3 * fair_market
+                    edge = min(model_prob - american_to_prob(odds_to_bet), filters.MAX_EDGE)
                     if edge < config.PROP_MIN_EDGE:
-                        logger.debug(f"Market anchor regularized {player_name}: edge dropped below threshold")
+                        logger.debug(f"Market anchor: {player_name} edge dropped below threshold")
                         continue
 
                 if direction is None:

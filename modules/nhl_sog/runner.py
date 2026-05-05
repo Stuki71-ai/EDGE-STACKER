@@ -156,15 +156,15 @@ def run(today):
             if direction is None:
                 continue
 
-            # MARKET ANCHOR: regularize model toward market consensus if it's too aggressive.
+            # MARKET ANCHOR: always blend 70% model + 30% market consensus.
             fair_over = sd.get("fair_over_prob")
             fair_under = sd.get("fair_under_prob")
             fair_market = fair_over if direction == "OVER" else fair_under
-            if fair_market is not None and abs(model_prob - fair_market) > 0.25:
-                model_prob = 0.5 * model_prob + 0.5 * fair_market
+            if fair_market is not None:
+                model_prob = 0.7 * model_prob + 0.3 * fair_market
                 edge = min(model_prob - american_to_prob(odds_to_bet), filters.MAX_EDGE)
                 if edge < filters.MIN_EDGE:
-                    logger.debug(f"NHL market anchor regularized {player_name}: edge below threshold")
+                    logger.debug(f"NHL market anchor: {player_name} edge below threshold")
                     continue
 
             # Filter pipeline
