@@ -275,16 +275,6 @@ def main():
                           prior_exposure=prior_exposure)
     print(json.dumps(output, indent=2))
 
-    # CLV tracking: persist opens for the slate the picks are FOR (the
-    # game date in each pick's context), not the run date — they can differ
-    # when a 4 PM ET run produces picks for a late-night slate.
-    try:
-        from shared import clv
-        slate_date = output.get("date") or today.isoformat()
-        clv.save_open(placed, slate_date)
-    except Exception as e:
-        logger.warning(f"CLV save_open failed (non-fatal): {e}")
-
     exit_code = 2 if had_errors else 0
     sys.exit(exit_code)
 
