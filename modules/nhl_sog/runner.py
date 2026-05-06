@@ -238,8 +238,6 @@ def run(today):
                     "sog_per_60": proj_result["sog_per_60"],
                     "opp_sa": round(opp_sa, 1),
                     "game_date": game_date_str,
-                    "event_id": event_id,  # for CLV re-query
-                    "commence_time": event.get("commence_time", ""),
                 },
                 game_time=game_time_str,
             )

@@ -18,4 +18,3 @@ workflow_*.json
 run_local_nba.log
 daily_state_local.json
 nba_local.json
-clv_history/
