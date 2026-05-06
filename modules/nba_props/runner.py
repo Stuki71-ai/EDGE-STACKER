@@ -289,6 +289,8 @@ def run(today):
                         "minutes_stable": minutes_stable,
                         "vig": vig,
                         "game_date": game_date_str,
+                        "event_id": event_id,  # for CLV re-query
+                        "commence_time": event.get("commence_time", ""),
                     },
                     bet_by=bet_by_str,
                     game_time=game_time_str,
