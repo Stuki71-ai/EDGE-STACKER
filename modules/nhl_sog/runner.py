@@ -57,6 +57,17 @@ def run(today):
         logger.info("No NHL games today")
         return []
 
+    # PHANTOM GAME FILTER: cross-check every Odds API event against ESPN's
+    # actual NHL scoreboard for that game's date. If ESPN doesn't know about
+    # the matchup, or marks it postponed/cancelled, drop the event. Catches:
+    # postponed games still in the Odds API listing, stale slate entries,
+    # and games that never actually happen (the May-4 Carlsson/Killorn case
+    # where ANA didn't play but appeared in props).
+    events = _filter_phantom_games(events)
+    if not events:
+        logger.info("No NHL games today after phantom-game filter")
+        return []
+
     logger.info(f"NHL SOG: Processing {len(events)} games")
 
     # Pre-fetch player rosters for the teams actually playing today.
@@ -234,6 +245,123 @@ def run(today):
             logger.info(f"NHL PICK: {player_name} {direction} {line} SOG | edge={edge:.1%}")
 
     return picks
+
+
+def _filter_phantom_games(events):
+    """Cross-check Odds API events against ESPN's actual NHL scoreboard.
+
+    Drops events that ESPN doesn't know about for that date, or that ESPN
+    marks postponed/cancelled. Without this filter, the Odds API can list
+    a game that turns out not to happen (postponed, stale listing, timezone
+    edge case) and we generate picks for players who never play.
+
+    Strategy: group events by game date (in ET), query ESPN scoreboard once
+    per date, build a set of (away_displayName, home_displayName) pairs
+    that ESPN says are scheduled (excluding postponed/cancelled). Drop
+    Odds API events whose matchup isn't in that set.
+
+    Returns the filtered events list. Empty list if every event is phantom
+    or if ESPN scoreboard fetch fails entirely (fail-closed: better no
+    picks than picks for non-existent games).
+    """
+    from datetime import datetime, timezone, timedelta
+    import config as _config
+
+    # Group event indices by game date (ET)
+    events_by_date = {}
+    for i, ev in enumerate(events):
+        commence = ev.get("commence_time", "")
+        if not commence:
+            continue
+        try:
+            game_dt = datetime.fromisoformat(commence.replace("Z", "+00:00"))
+            et = timezone(timedelta(hours=_config.ET_OFFSET_HOURS))
+            date_str = game_dt.astimezone(et).strftime("%Y%m%d")
+            events_by_date.setdefault(date_str, []).append(i)
+        except (ValueError, TypeError):
+            continue
+
+    valid_pairs_by_date = {}
+    for date_str in events_by_date:
+        try:
+            resp = requests.get(
+                f"https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard?dates={date_str}",
+                timeout=10
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            pairs = set()
+            for espn_event in data.get("events", []):
+                # Skip postponed / cancelled / suspended games
+                status = espn_event.get("status", {}).get("type", {})
+                state_name = status.get("name", "").upper()
+                if any(k in state_name for k in ("POSTPONED", "CANCELED", "CANCELLED", "SUSPENDED")):
+                    continue
+                comp = espn_event.get("competitions", [{}])[0]
+                names = []
+                for c in comp.get("competitors", []):
+                    name = c.get("team", {}).get("displayName", "")
+                    if name:
+                        names.append(name)
+                if len(names) == 2:
+                    # Store both orderings since Odds API home/away may differ
+                    pairs.add((names[0], names[1]))
+                    pairs.add((names[1], names[0]))
+            valid_pairs_by_date[date_str] = pairs
+            logger.info(f"NHL ESPN scoreboard for {date_str}: {len(pairs)//2} valid games")
+        except Exception as e:
+            logger.warning(f"NHL ESPN scoreboard for {date_str} failed: {e}")
+            # Fail open for THIS date only — don't drop everything if one date errors
+            valid_pairs_by_date[date_str] = None
+
+    # Filter
+    kept = []
+    dropped = []
+    for ev in events:
+        commence = ev.get("commence_time", "")
+        if not commence:
+            kept.append(ev)
+            continue
+        try:
+            game_dt = datetime.fromisoformat(commence.replace("Z", "+00:00"))
+            et = timezone(timedelta(hours=_config.ET_OFFSET_HOURS))
+            date_str = game_dt.astimezone(et).strftime("%Y%m%d")
+        except (ValueError, TypeError):
+            kept.append(ev)
+            continue
+
+        valid_pairs = valid_pairs_by_date.get(date_str)
+        if valid_pairs is None:
+            # ESPN scoreboard unavailable — fail open for this date
+            kept.append(ev)
+            continue
+
+        away = ev.get("away_team", "")
+        home = ev.get("home_team", "")
+
+        # Match by normalized name (handle accents like Montréal)
+        import unicodedata
+
+        def norm(s):
+            return "".join(
+                c for c in unicodedata.normalize("NFKD", s)
+                if not unicodedata.combining(c)
+            ).lower().strip()
+
+        n_away, n_home = norm(away), norm(home)
+        match = False
+        for a, h in valid_pairs:
+            if norm(a) == n_away and norm(h) == n_home:
+                match = True
+                break
+        if match:
+            kept.append(ev)
+        else:
+            dropped.append(f"{away} @ {home} ({date_str})")
+
+    if dropped:
+        logger.warning(f"NHL phantom-game filter dropped {len(dropped)}: {dropped}")
+    return kept
 
 
 def _build_team_id_cache():
