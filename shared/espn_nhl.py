@@ -81,42 +81,73 @@ def get_player_gamelog(espn_player_id, last_n=10, include_postseason=True):
 def get_team_defensive_stats():
     """Get NHL team defensive stats — shots against per game.
 
+    ESPN's per-team statistics endpoint returns total `shotsAgainst` (in the
+    defensive category) and `games` (in general category) — NOT a precomputed
+    average. The previous version looked for "avgShotsAgainst" / "shotsAgainstPerGame"
+    which don't exist, so every team silently fell back to the 30.0 placeholder
+    and opp_factor was always 1.0 — opponent adjustment was dead code.
+
+    Fix: read `shotsAgainst` and `games` from the right categories, compute the
+    average. Iterate all 32 teams from /teams endpoint (don't depend on standings).
+
     Returns:
         dict mapping espn_team_id (str) -> shots_against_per_game (float)
     """
     sa_map = {}
+
+    # Get all 32 NHL team IDs from static /teams endpoint
     try:
-        resp = requests.get(f"https://site.api.espn.com/apis/v2/sports/hockey/nhl/standings", timeout=15)
+        resp = requests.get(f"{SITE_BASE}/teams", timeout=15)
         resp.raise_for_status()
         data = resp.json()
-        for group in data.get("children", []):
-            for entry in group.get("standings", {}).get("entries", []):
-                team_id = str(entry.get("team", {}).get("id", ""))
-                if not team_id:
-                    continue
-                # NHL standings may not include shots-against directly; fallback to team stats
-                sa_map[team_id] = 30.0  # league avg placeholder
-
-        # Fallback: per-team stats endpoint
-        for team_id in list(sa_map.keys()):
-            try:
-                tr = requests.get(f"{SITE_BASE}/teams/{team_id}/statistics", timeout=8)
-                if tr.status_code == 200:
-                    td = tr.json()
-                    cats = td.get("results", {}).get("stats", {}).get("categories", [])
-                    for cat in cats:
-                        for s in cat.get("stats", []):
-                            name = s.get("name", "")
-                            if name in ("avgShotsAgainst", "shotsAgainstPerGame"):
-                                try:
-                                    sa_map[team_id] = float(s.get("value", 30.0))
-                                except (ValueError, TypeError):
-                                    pass
-                                break
-            except Exception:
-                continue
+        team_ids = []
+        for sport in data.get("sports", []):
+            for league in sport.get("leagues", []):
+                for entry in league.get("teams", []):
+                    tid = str(entry.get("team", {}).get("id", ""))
+                    if tid:
+                        team_ids.append(tid)
     except Exception as e:
-        logger.warning(f"ESPN NHL standings/SA failed: {e}")
+        logger.warning(f"NHL teams list failed: {e}")
+        return sa_map
+
+    placeholder_count = 0
+    for team_id in team_ids:
+        try:
+            tr = requests.get(f"{SITE_BASE}/teams/{team_id}/statistics", timeout=8)
+            if tr.status_code != 200:
+                sa_map[team_id] = 30.0
+                placeholder_count += 1
+                continue
+            td = tr.json()
+            cats = td.get("results", {}).get("stats", {}).get("categories", [])
+            shots_against_total = None
+            games = None
+            for cat in cats:
+                cname = cat.get("name", "")
+                for s in cat.get("stats", []):
+                    sname = s.get("name", "")
+                    if cname == "defensive" and sname == "shotsAgainst":
+                        try:
+                            shots_against_total = float(s.get("value"))
+                        except (ValueError, TypeError):
+                            pass
+                    elif cname == "general" and sname == "games":
+                        try:
+                            games = float(s.get("value"))
+                        except (ValueError, TypeError):
+                            pass
+            if shots_against_total is not None and games and games > 0:
+                sa_map[team_id] = shots_against_total / games
+            else:
+                sa_map[team_id] = 30.0
+                placeholder_count += 1
+        except Exception:
+            sa_map[team_id] = 30.0
+            placeholder_count += 1
+
+    if placeholder_count > 0:
+        logger.warning(f"NHL SA: {placeholder_count}/{len(sa_map)} teams used 30.0 placeholder")
 
     return sa_map
 
