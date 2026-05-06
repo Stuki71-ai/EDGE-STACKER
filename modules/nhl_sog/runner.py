@@ -317,6 +317,7 @@ def _filter_phantom_games(events):
     # Filter
     kept = []
     dropped = []
+    now_utc = datetime.now(timezone.utc)
     for ev in events:
         commence = ev.get("commence_time", "")
         if not commence:
@@ -328,6 +329,15 @@ def _filter_phantom_games(events):
             date_str = game_dt.astimezone(et).strftime("%Y%m%d")
         except (ValueError, TypeError):
             kept.append(ev)
+            continue
+
+        # Skip games that have already started or finished. Odds API can list
+        # afternoon games whose Final has already settled by 04:30 PM ET fire
+        # time. We never want to emit picks on those.
+        minutes_to_tipoff = (game_dt - now_utc).total_seconds() / 60.0
+        if minutes_to_tipoff < 5:
+            dropped.append(f"{ev.get('away_team','')} @ {ev.get('home_team','')} "
+                           f"(tipoff {minutes_to_tipoff:.0f} min ago — already started/final)")
             continue
 
         valid_pairs = valid_pairs_by_date.get(date_str)

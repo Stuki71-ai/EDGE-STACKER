@@ -74,6 +74,34 @@ def run(today):
         logger.info("No NBA games today")
         return []
 
+    # Drop games that have already started or finished. Odds API can list
+    # afternoon games whose Final has already settled by our fire time;
+    # we never want to emit picks on those.
+    now_utc = datetime.now(timezone.utc)
+    fresh_events = []
+    dropped_started = []
+    for ev in events:
+        ct = ev.get("commence_time", "")
+        if not ct:
+            fresh_events.append(ev)
+            continue
+        try:
+            game_dt = datetime.fromisoformat(ct.replace("Z", "+00:00"))
+            minutes_ahead = (game_dt - now_utc).total_seconds() / 60.0
+            if minutes_ahead < 5:
+                dropped_started.append(f"{ev.get('away_team','')} @ {ev.get('home_team','')} "
+                                       f"(tipoff {minutes_ahead:.0f} min ago)")
+                continue
+        except (ValueError, TypeError):
+            pass
+        fresh_events.append(ev)
+    if dropped_started:
+        logger.warning(f"NBA: dropped {len(dropped_started)} already-started/final games: {dropped_started}")
+    events = fresh_events
+    if not events:
+        logger.info("No NBA games left after dropping already-started ones")
+        return []
+
     # Pre-filter to top 5-8 games
     games_to_process = _prioritize_games(events, injury_map, drtg_map)
     logger.info(f"Processing {len(games_to_process)} of {len(events)} NBA games")
