@@ -74,12 +74,16 @@ def run(today):
         logger.info("No NBA games today")
         return []
 
-    # Drop games that have already started or finished. Odds API can list
-    # afternoon games whose Final has already settled by our fire time;
-    # we never want to emit picks on those.
+    # Tipoff window: games must start AFTER now (+5 min buffer) AND no later
+    # than 8 hours from now. Drops:
+    #  - already-started/final games (Odds API can list ones the books haven't pulled)
+    #  - tomorrow's slate (we don't bet >8h out — too much line movement before tipoff,
+    #    too much can change on injuries / lineups overnight)
     now_utc = datetime.now(timezone.utc)
+    MAX_HOURS_AHEAD = 8
     fresh_events = []
     dropped_started = []
+    dropped_too_far = []
     for ev in events:
         ct = ev.get("commence_time", "")
         if not ct:
@@ -87,16 +91,22 @@ def run(today):
             continue
         try:
             game_dt = datetime.fromisoformat(ct.replace("Z", "+00:00"))
-            minutes_ahead = (game_dt - now_utc).total_seconds() / 60.0
-            if minutes_ahead < 5:
+            hours_ahead = (game_dt - now_utc).total_seconds() / 3600.0
+            if hours_ahead < (5/60.0):  # already started/final
                 dropped_started.append(f"{ev.get('away_team','')} @ {ev.get('home_team','')} "
-                                       f"(tipoff {minutes_ahead:.0f} min ago)")
+                                       f"(tipoff {hours_ahead*60:.0f} min ago)")
+                continue
+            if hours_ahead > MAX_HOURS_AHEAD:
+                dropped_too_far.append(f"{ev.get('away_team','')} @ {ev.get('home_team','')} "
+                                       f"(tipoff in {hours_ahead:.1f}h — beyond {MAX_HOURS_AHEAD}h window)")
                 continue
         except (ValueError, TypeError):
             pass
         fresh_events.append(ev)
     if dropped_started:
         logger.warning(f"NBA: dropped {len(dropped_started)} already-started/final games: {dropped_started}")
+    if dropped_too_far:
+        logger.info(f"NBA: dropped {len(dropped_too_far)} games beyond {MAX_HOURS_AHEAD}h window: {dropped_too_far}")
     events = fresh_events
     if not events:
         logger.info("No NBA games left after dropping already-started ones")

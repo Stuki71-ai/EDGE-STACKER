@@ -331,13 +331,18 @@ def _filter_phantom_games(events):
             kept.append(ev)
             continue
 
-        # Skip games that have already started or finished. Odds API can list
-        # afternoon games whose Final has already settled by 04:30 PM ET fire
-        # time. We never want to emit picks on those.
-        minutes_to_tipoff = (game_dt - now_utc).total_seconds() / 60.0
-        if minutes_to_tipoff < 5:
+        # Tipoff window: must be in [now+5min, now+8h]. Drops both already-started
+        # games AND tomorrow's slate (we don't bet >8h out — too much line movement,
+        # injuries, scratches before tipoff).
+        MAX_HOURS_AHEAD = 8
+        hours_to_tipoff = (game_dt - now_utc).total_seconds() / 3600.0
+        if hours_to_tipoff < (5/60.0):
             dropped.append(f"{ev.get('away_team','')} @ {ev.get('home_team','')} "
-                           f"(tipoff {minutes_to_tipoff:.0f} min ago — already started/final)")
+                           f"(tipoff {hours_to_tipoff*60:.0f} min ago — already started/final)")
+            continue
+        if hours_to_tipoff > MAX_HOURS_AHEAD:
+            dropped.append(f"{ev.get('away_team','')} @ {ev.get('home_team','')} "
+                           f"(tipoff in {hours_to_tipoff:.1f}h — beyond {MAX_HOURS_AHEAD}h window)")
             continue
 
         valid_pairs = valid_pairs_by_date.get(date_str)
