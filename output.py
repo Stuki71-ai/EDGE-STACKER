@@ -100,9 +100,11 @@ def build_email(placed, skipped, bankroll, peak, modules_run,
             player = ctx.get("player", "")
             line = ctx.get("line", "")
             direction = "OVER" if "OVER" in p.pick_description else "UNDER"
+            odds_str = _format_odds(p.best_odds_raw) if p.best_odds_raw else "?"
+            book = p.best_odds_book or "?"
 
             h.append(f"{star}{p.matchup} at {p.game_time}:<br>")
-            h.append(f"{player} - {stat_full} - {direction} {line}<br><br>")
+            h.append(f"{player} - {stat_full} - {direction} {line} @ {odds_str} ({book})<br><br>")
 
     h.append("</div>")
 

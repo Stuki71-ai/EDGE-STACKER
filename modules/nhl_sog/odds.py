@@ -25,10 +25,17 @@ def extract_props(event_odds):
                                   best_under_odds, best_under_book,
                                   over_odds, under_odds, all_lines}
     """
+    import config
     props = {}
+
+    # Filter to only books the user can actually bet on (betstamp coverage).
+    # See note in modules/nba_props/odds.py extract_props.
+    whitelist = getattr(config, "BETSTAMP_BOOKS", None)
 
     for bookmaker in event_odds.get("bookmakers", []):
         book_name = bookmaker.get("title", "Unknown")
+        if whitelist and book_name not in whitelist:
+            continue
 
         for market in bookmaker.get("markets", []):
             if market.get("key") != "player_shots_on_goal":

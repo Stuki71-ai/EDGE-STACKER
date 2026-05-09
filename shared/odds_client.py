@@ -48,7 +48,16 @@ def verify_sport_keys():
     return verified
 
 
-def get_odds(sport_key, markets="spreads", regions="us", odds_format="american"):
+# User is in CH (Switzerland) and bets via betstamp which aggregates EU + US books.
+# Pulling both regions is required so picks reflect odds the user can ACTUALLY take.
+# Pulling only `us` produced picks at +185 from Bovada that the user couldn't replicate
+# in Switzerland — they ended up taking ~-150 odds on EU books, turning paper-profitable
+# picks into real-money losers. Each region multiplies API credit cost by 1x; us+eu
+# is well within budget at our daily volume.
+DEFAULT_REGIONS = "us,eu"
+
+
+def get_odds(sport_key, markets="spreads", regions=DEFAULT_REGIONS, odds_format="american"):
     """Get odds for a sport. Returns list of events with odds."""
     params = {
         "regions": regions,
@@ -58,7 +67,7 @@ def get_odds(sport_key, markets="spreads", regions="us", odds_format="american")
     return _get(f"sports/{sport_key}/odds/", params)
 
 
-def get_event_odds(sport_key, event_id, markets, regions="us", odds_format="american"):
+def get_event_odds(sport_key, event_id, markets, regions=DEFAULT_REGIONS, odds_format="american"):
     """Get odds for a specific event (used for player props)."""
     params = {
         "regions": regions,

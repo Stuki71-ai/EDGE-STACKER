@@ -95,6 +95,30 @@ ET_OFFSET_HOURS = -5  # UTC-5 (ET)
 DEFAULT_BANKROLL = 500.00
 
 
+# ── Bookable books on betstamp (user's actual placement venue) ──
+# Filters Odds API results so picks only consider odds the user can take.
+# Without this, the runner finds "best odds" from ANY book including ones
+# unavailable on betstamp/in user's region — picks look profitable on paper
+# but the user can't actually capture those lines.
+# Source: books visible on user's betstamp screenshots (NHL + NBA tabs).
+# Names must match Odds API bookmaker.title field exactly.
+# To temporarily disable filtering, set this to None.
+BETSTAMP_BOOKS = {
+    # US-facing
+    "Bovada", "BetMGM", "Caesars", "ESPN BET", "DraftKings", "FanDuel",
+    "BetRivers", "Pinnacle", "PointsBet", "BetOnline.ag",
+    # Canada-facing (visible in user's NHL betstamp)
+    "Bet99", "BetVictor", "TheScore", "theScore", "theScore Bet", "Sports Interaction",
+    "Bally Bet", "BallyBet", "Borgata", "ProLine",
+    # EU-facing (visible in user's NHL betstamp)
+    "betway", "bwin", "Betano", "888sport", "Casumo",
+    "Tikitaka", "TikiTaka", "Bankonbet", "BankonBet", "TooneeBet", "Tooniebet",
+    "Fanatics", "Rebet",
+    # Pinnacle alt names sometimes seen
+    "Pinnacle Sports",
+}
+
+
 def load_static_json(filename):
     """Load a JSON file from the static directory."""
     path = os.path.join(STATIC_DIR, filename)
