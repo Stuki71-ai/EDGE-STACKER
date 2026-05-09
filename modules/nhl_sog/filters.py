@@ -8,7 +8,7 @@ logger = logging.getLogger("edge_stacker")
 MIN_GAMES = 10
 MIN_TOI_FORWARD_SEC = 14 * 60  # 14 min average for top-6 forwards
 MIN_TOI_DEFENSE_SEC = 18 * 60  # 18 min for top-4 defensemen
-MIN_EDGE = 0.06
+MIN_EDGE = 0.10  # raised from 0.06 — actual taken odds ~30-40% worse than Odds API "best"; need stronger conviction
 MAX_VIG = 0.08
 MAX_EDGE = 0.20
 

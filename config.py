@@ -54,7 +54,7 @@ WEATHER_MAX_UNDER_ODDS = -115  # Best under odds must be >= this (less negative)
 PROP_MIN_GAMES = 10
 PROP_MIN_MINUTES = 20
 PROP_MAX_VIG = 0.08
-PROP_MIN_EDGE = 0.06
+PROP_MIN_EDGE = 0.10  # raised from 0.06 — actual taken odds are ~30-40% worse than Odds API "best" suggests; need stronger conviction to compensate
 PROP_MINUTES_STD_CAP = 5.0
 PROP_MINUTES_HIGH_EDGE = 0.08
 PROP_MAX_GAMES_PER_RUN = 8
