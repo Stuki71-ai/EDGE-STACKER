@@ -28,17 +28,8 @@ def extract_props(event_odds):
     """
     props = {}
 
-    # Filter to only books the user can actually bet on (betstamp coverage).
-    # Without this, "best_over_odds" / "best_under_odds" pick the juiciest line
-    # across ALL books including ones unavailable to the user, producing
-    # picks that look profitable on paper but lose money in practice because
-    # the user gets worse odds when actually placing.
-    whitelist = getattr(config, "BETSTAMP_BOOKS", None)
-
     for bookmaker in event_odds.get("bookmakers", []):
         book_name = bookmaker.get("title", "Unknown")
-        if whitelist and book_name not in whitelist:
-            continue
 
         for market in bookmaker.get("markets", []):
             market_key = market.get("key", "")
