@@ -31,6 +31,7 @@ SPORT_KEYS = {
     "ncaaf": "americanfootball_ncaaf",
     "ncaab": "basketball_ncaab",
     "nba": "basketball_nba",
+    "mlb": "baseball_mlb",
 }
 
 # ── Odds API Budget ──

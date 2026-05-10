@@ -53,6 +53,10 @@ def active_modules(today: date) -> list:
     if (month == 10 and day >= 7) or month in (11, 12, 1, 2, 3, 4, 5) or (month == 6 and day <= 20):
         active.append("nhl_sog")
 
+    # Module 7: MLB F5 Totals -- Mar 25 through Oct 31 (regular season + playoffs)
+    if (month == 3 and day >= 25) or month in (4, 5, 6, 7, 8, 9, 10):
+        active.append("mlb_f5")
+
     return active
 
 

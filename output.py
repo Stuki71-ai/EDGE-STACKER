@@ -76,6 +76,7 @@ def build_email(placed, skipped, bankroll, peak, modules_run,
         "ncaaf_weather": "NCAAF WEATHER UNDERS",
         "nba_props": "NBA PLAYER PROPS",
         "nhl_sog": "NHL SHOTS ON GOAL",
+        "mlb_f5": "MLB F5 TOTALS",
         "ncaaf_bowls": "NCAAF BOWL UNDERDOGS",
         "ncaab_kenpom": "NCAAB KENPOM DISAGREEMENT",
         "ncaab_conf_tourney": "NCAAB CONFERENCE TOURNAMENT",
@@ -96,13 +97,21 @@ def build_email(placed, skipped, bankroll, peak, modules_run,
         for p in picks:
             star = "&#9733; " if p.grade.startswith("A") else ""
             ctx = p.context
-            stat_full = STAT_FULL.get(ctx.get("stat", ""), ctx.get("stat", ""))
+            stat_raw = ctx.get("stat", "")
+            stat_full = STAT_FULL.get(stat_raw, stat_raw)
             player = ctx.get("player", "")
             line = ctx.get("line", "")
             direction = "OVER" if "OVER" in p.pick_description else "UNDER"
 
             h.append(f"{star}{p.matchup} at {p.game_time}:<br>")
-            h.append(f"{player} - {stat_full} - {direction} {line}<br><br>")
+            if stat_raw == "F5_TOTAL":
+                # MLB F5: show starters instead of player + "First 5 Innings Total"
+                away_p = ctx.get("away_starter", "?")
+                home_p = ctx.get("home_starter", "?")
+                h.append(f"First 5 Innings Total - {direction} {line}<br>")
+                h.append(f"<small>Starters: {away_p} (A) vs {home_p} (H)</small><br><br>")
+            else:
+                h.append(f"{player} - {stat_full} - {direction} {line}<br><br>")
 
     h.append("</div>")
 
@@ -183,6 +192,7 @@ def _build_subject(date_str, placed):
         "ncaaf_weather": "NCAAF WEATHER UNDERS",
         "nba_props": "NBA PLAYER PROPS",
         "nhl_sog": "NHL SHOTS ON GOAL",
+        "mlb_f5": "MLB F5 TOTALS",
         "ncaaf_bowls": "NCAAF BOWL UNDERDOGS",
         "ncaab_kenpom": "NCAAB KENPOM DISAGREEMENT",
         "ncaab_conf_tourney": "NCAAB CONFERENCE TOURNAMENT",
