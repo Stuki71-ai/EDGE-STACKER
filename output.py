@@ -105,11 +105,7 @@ def build_email(placed, skipped, bankroll, peak, modules_run,
 
             h.append(f"{star}{p.matchup} at {p.game_time}:<br>")
             if stat_raw == "F5_TOTAL":
-                # MLB F5: show starters instead of player + "First 5 Innings Total"
-                away_p = ctx.get("away_starter", "?")
-                home_p = ctx.get("home_starter", "?")
-                h.append(f"First 5 Innings Total - {direction} {line}<br>")
-                h.append(f"<small>Starters: {away_p} (A) vs {home_p} (H)</small><br><br>")
+                h.append(f"First 5 Innings Total - {direction} {line}<br><br>")
             else:
                 h.append(f"{player} - {stat_full} - {direction} {line}<br><br>")
 
