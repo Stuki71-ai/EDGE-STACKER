@@ -16,6 +16,7 @@ logger = logging.getLogger("edge_stacker")
 _park_factors = None
 _pitcher_stats_cache = {}
 _team_woba_cache = {}
+_fip_constant_cache = {}
 
 
 def park_factor(venue_name):
@@ -133,7 +134,7 @@ def get_pitcher_stats(pitcher_id, season=None):
         _pitcher_stats_cache[pitcher_id] = None
         return None
 
-    fip = ((13 * sum_hr) + (3 * sum_bb) - (2 * sum_k)) / sum_ip + 3.10
+    fip = ((13 * sum_hr) + (3 * sum_bb) - (2 * sum_k)) / sum_ip + fip_constant(season)
     k_pct = sum_k / sum_bf
     bb_pct = sum_bb / sum_bf
 
@@ -191,6 +192,71 @@ def get_team_woba_vs_hand(team_id, opp_hand, season=None):
                 break
     _team_woba_cache[cache_key] = woba
     return woba
+
+
+def fip_constant(season=None):
+    """Live league FIP constant for the given season.
+
+    FIP = (13*HR + 3*BB - 2*K) / IP + constant, where `constant` is calibrated
+    so league-avg FIP == league-avg ERA. Modern values range ~2.95-3.30.
+    Hardcoding 3.10 is OK most years but can be off by ~0.10 in extremes.
+
+    Returns float; falls back to 3.10 if API/parse fails.
+    """
+    if season is None:
+        season = datetime.utcnow().year
+    if season in _fip_constant_cache:
+        return _fip_constant_cache[season]
+
+    # The /stats endpoint returns the top-50 pitchers by default — NOT a league
+    # aggregate. Instead query /teams/stats and sum across all 30 teams.
+    url = (f"https://statsapi.mlb.com/api/v1/teams/stats"
+           f"?stats=season&group=pitching&sportIds=1&season={season}")
+    try:
+        r = requests.get(url, timeout=15)
+        r.raise_for_status()
+        data = r.json()
+    except Exception as e:
+        logger.warning(f"FIP constant fetch failed: {e} — using 3.10")
+        _fip_constant_cache[season] = 3.10
+        return 3.10
+
+    splits = []
+    for block in data.get("stats", []):
+        splits.extend(block.get("splits", []))
+    if not splits:
+        _fip_constant_cache[season] = 3.10
+        return 3.10
+
+    # Sum across all teams to get true league aggregates.
+    lg_ip = lg_hr = lg_bb = lg_k = 0.0
+    lg_er = 0.0  # back-derived from each team's ERA × IP / 9
+    for s in splits:
+        stat = s.get("stat", {})
+        try:
+            ip = _ip_to_float(stat.get("inningsPitched", "0"))
+            era = float(stat.get("era", "0"))
+        except (ValueError, TypeError):
+            continue
+        lg_ip += ip
+        lg_er += era * ip / 9.0
+        lg_hr += int(stat.get("homeRuns", 0))
+        lg_bb += int(stat.get("baseOnBalls", 0))
+        lg_k += int(stat.get("strikeOuts", 0))
+    if lg_ip <= 0:
+        _fip_constant_cache[season] = 3.10
+        return 3.10
+    lg_era = lg_er * 9.0 / lg_ip
+
+    constant = lg_era - ((13 * lg_hr + 3 * lg_bb - 2 * lg_k) / lg_ip)
+    constant = round(constant, 3)
+    # Sanity guard: known historical range is ~2.85-3.40
+    if constant < 2.5 or constant > 3.6:
+        logger.warning(f"FIP constant {constant} out of expected range — using 3.10")
+        constant = 3.10
+    logger.info(f"MLB FIP constant for {season}: {constant} (lgERA={lg_era}, lgIP={lg_ip:.1f})")
+    _fip_constant_cache[season] = constant
+    return constant
 
 
 def _ip_to_float(ip_str):
