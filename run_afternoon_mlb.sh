@@ -1,8 +1,8 @@
 #!/bin/bash
-# DST-proof guard: only run if it's 16:30 ET (4:30 PM ET).
-# Cron fires at 20:30 UTC + 21:30 UTC; this self-filters by ET hour.
+# DST-proof guard: only run if it's 15:00 ET (3:00 PM ET).
+# Cron fires at 19:00 UTC + 20:00 UTC; this self-filters by ET hour.
 HOUR_ET=$(TZ=America/New_York date +%H)
-if [ "$HOUR_ET" != "16" ]; then
+if [ "$HOUR_ET" != "15" ]; then
     exit 0
 fi
 
