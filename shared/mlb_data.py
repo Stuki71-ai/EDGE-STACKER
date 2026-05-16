@@ -6,7 +6,7 @@ MLB Stats API has no documented rate limit but be courteous with caching.
 
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 import requests
@@ -150,7 +150,7 @@ def get_pitcher_stats(pitcher_id, season=None):
 
 
 def get_team_woba_vs_hand(team_id, opp_hand, season=None):
-    """Team's wOBA vs LHP or RHP (last 30 days).
+    """Team's wOBA vs LHP or RHP (season-to-date).
 
     opp_hand: 'L' or 'R' — handedness of pitcher the team is FACING.
     Returns float (typically .280-.360) or 0.320 (league avg) on failure.
@@ -163,11 +163,8 @@ def get_team_woba_vs_hand(team_id, opp_hand, season=None):
     if season is None:
         season = datetime.utcnow().year
 
-    today = datetime.utcnow().date()
-    start = today - timedelta(days=30)
     url = (f"https://statsapi.mlb.com/api/v1/teams/{team_id}/stats"
-           f"?stats=byDateRange&group=hitting&season={season}"
-           f"&startDate={start.isoformat()}&endDate={today.isoformat()}"
+           f"?stats=statSplits&group=hitting&season={season}"
            f"&sitCodes=vl,vr")
     try:
         r = requests.get(url, timeout=15)
@@ -180,7 +177,7 @@ def get_team_woba_vs_hand(team_id, opp_hand, season=None):
     woba = 0.320
     for stats_block in data.get("stats", []):
         for split in stats_block.get("splits", []):
-            sit = split.get("sitCode", "")
+            sit = split.get("split", {}).get("code", "")
             if (opp_hand == "L" and sit == "vl") or (opp_hand == "R" and sit == "vr"):
                 stat = split.get("stat", {})
                 ops_str = stat.get("ops", ".700")
