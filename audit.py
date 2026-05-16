@@ -319,7 +319,7 @@ def phase15_data():
     # MLB FIP constant
     try:
         from shared import mlb_data
-        fip = mlb_data.fip_constant(datetime.utcnow().year)
+        fip = mlb_data.fip_constant(datetime.now(timezone.utc).year)
         if not (2.8 <= fip <= 3.5):
             decision(f"MLB FIP constant {fip} outside plausible 2.8-3.5 range")
         else:
@@ -385,7 +385,7 @@ def phase25_recompute(nhl_picks, mlb_picks, mlb_block):
             from shared import mlb_data
             from modules.mlb_f5 import projections as mlb_proj
             run_date = re.search(r"EDGE STACKER run: (\d{4}-\d{2}-\d{2})", mlb_block)
-            fire_date = run_date.group(1) if run_date else datetime.utcnow().date().isoformat()
+            fire_date = run_date.group(1) if run_date else datetime.now(timezone.utc).date().isoformat()
             sched = {(g["away_team"], g["home_team"]): g
                      for g in mlb_data.get_schedule(fire_date)}
             away, home = [s.strip() for s in matchup.split("@")]
