@@ -72,6 +72,7 @@ def get_schedule(date_iso):
             games.append({
                 "gamePk": g.get("gamePk"),
                 "gameDate": g.get("gameDate"),
+                "status": g.get("status", {}).get("detailedState", ""),
                 "venue": g.get("venue", {}).get("name", ""),
                 "away_team": away.get("team", {}).get("name", ""),
                 "home_team": home.get("team", {}).get("name", ""),
@@ -166,7 +167,12 @@ def get_team_woba_vs_hand(team_id, opp_hand, season=None):
     opp_hand: 'L' or 'R' — handedness of pitcher the team is FACING.
     Returns float (typically .280-.360) or 0.320 (league avg) on failure.
 
-    OPS->wOBA conversion: wOBA ~= 0.45 * OPS + 0.020 (rough but stable).
+    OPS->wOBA conversion: wOBA ~= 0.45 * OPS + 0.020.
+    CALIBRATION CAVEAT: this proxy's league mean is ~0.336, not the true ~0.320
+    wOBA scale. projections.project_team_runs_f5 deliberately leaves this
+    uncorrected because it offsets an equal-and-opposite ~8% earned-vs-total
+    runs gap in the xFIP base — see the CALIBRATION NOTE there. Do not "fix"
+    this intercept in isolation.
     """
     cache_key = (team_id, opp_hand)
     if cache_key in _team_woba_cache:

@@ -65,6 +65,13 @@ def run(today):
         if not sched:
             logger.debug(f"MLB: no schedule match for {ev.get('away_team','')}@{ev.get('home_team','')}")
             continue
+        # Postponed/cancelled/suspended games must never produce a pick — the
+        # Odds API can still list a market briefly after MLB pulls the game.
+        status = sched.get("status", "")
+        if any(bad in status for bad in ("Postponed", "Cancel", "Suspend")):
+            logger.info(f"MLB: skipping {sched['away_team']}@{sched['home_team']} "
+                        f"— game status '{status}'")
+            continue
         if not sched["away_starter_id"] or not sched["home_starter_id"]:
             logger.debug(f"MLB: starters TBD for {sched['away_team']}@{sched['home_team']}")
             continue

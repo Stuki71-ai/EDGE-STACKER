@@ -10,10 +10,29 @@ def project_team_runs_f5(pitcher_xfip, opp_woba, park_factor=1.00, weather_facto
     """Project runs allowed by `pitcher` over first 5 innings.
 
     Args:
-        pitcher_xfip: rolling 30-day xFIP
-        opp_woba: opposing team's wOBA vs pitcher's hand (30d)
+        pitcher_xfip: rolling xFIP (last ~6 starts)
+        opp_woba: opposing team's wOBA vs pitcher's hand
         park_factor: 3yr park factor for runs (1.00 neutral)
         weather_factor: temp/wind multiplier (1.00 neutral)
+
+    ┌─ CALIBRATION NOTE — read before "fixing" either factor ─────────────────┐
+    │ This projection carries TWO offsetting ~8% scale quirks that currently  │
+    │ CANCEL, leaving the total ~correct (verified: two league-avg starters   │
+    │ -> ~4.9 F5 runs vs ~5.0 real-world average):                            │
+    │                                                                         │
+    │  (1) `opp_woba` comes from an OPS->wOBA proxy whose league mean is       │
+    │      ~0.336, while LEAGUE_AVG_WOBA here is 0.320 -> lineup_factor runs   │
+    │      ~+8% high for an average team.                                     │
+    │  (2) xFIP/FIP is an EARNED-run (ERA) scale stat, but the F5 market is    │
+    │      TOTAL runs. Unearned runs are ~8% of all runs, so the base         │
+    │      `xFIP*5/9` runs ~8% LOW vs a total-runs line.                       │
+    │                                                                         │
+    │ (1) and (2) offset to within ~1-2% across the realistic team range.     │
+    │ DO NOT patch one without the other — that re-introduces a full ~8%      │
+    │ directional bias. A proper recalibration of BOTH must be backtested     │
+    │ before deployment; it is deliberately deferred (not a "try-and-see"     │
+    │ constant tweak). See the MLB deep-audit report.                         │
+    └─────────────────────────────────────────────────────────────────────────┘
     """
     base_runs_5 = pitcher_xfip * 5.0 / 9.0
     lineup_factor = 1.0 + (opp_woba - LEAGUE_AVG_WOBA) * 5.0
@@ -62,12 +81,27 @@ def poisson_cdf_at(line, expected):
 def f5_edge(projection, line, over_odds_raw, under_odds_raw):
     """Compute model edge vs F5 line.
 
+    Push handling: integer F5 lines (4.0, 5.0, 6.0 — confirmed common in live
+    markets) PUSH when the total lands exactly on the line. A push refunds the
+    stake; it is NOT a win for either side. So p_under / p_over are each the
+    probability that side wins OUTRIGHT — on an integer line the exact-line
+    outcome is excluded from both, and they do not sum to 1. Counting the push
+    as an under-win (the old behaviour) overstated every integer-line UNDER edge
+    by P(X = line) ~= 0.15-0.18 — large enough to manufacture phantom picks.
+
     Returns (direction, raw_edge, model_prob, odds_to_bet) or (None, 0, 0, 0).
     """
     from staking import american_to_prob
 
-    p_under = poisson_cdf_at(line, projection)
-    p_over = 1.0 - p_under
+    k = int(math.floor(line))
+    if line == k:
+        # integer line — a total of exactly k runs is a push
+        p_under = poisson_cdf_at(k - 1, projection)   # P(X <= k-1)
+        p_over = 1.0 - poisson_cdf_at(k, projection)  # P(X >= k+1)
+    else:
+        # half-point line — no push possible
+        p_under = poisson_cdf_at(line, projection)
+        p_over = 1.0 - p_under
 
     over_implied = american_to_prob(over_odds_raw)
     under_implied = american_to_prob(under_odds_raw)
