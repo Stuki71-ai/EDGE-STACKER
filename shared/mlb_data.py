@@ -20,7 +20,13 @@ _fip_constant_cache = {}
 
 
 def park_factor(venue_name):
-    """3yr FanGraphs park factor for runs. 1.00 = neutral. Default 1.00 if unknown."""
+    """3yr FanGraphs park factor for runs. 1.00 = neutral.
+
+    Falls back to neutral 1.00 for an unknown venue — but logs a WARNING so the
+    fallback is never silent. A missing venue means the static file's keys have
+    drifted from the MLB Stats API venue names (renamed/relocated parks) and
+    must be fixed: a wrong-signed factor corrupts every home game for that team.
+    """
     global _park_factors
     if _park_factors is None:
         path = Path(__file__).resolve().parent.parent / "static" / "mlb_park_factors.json"
@@ -30,7 +36,12 @@ def park_factor(venue_name):
         except Exception as e:
             logger.warning(f"Park factors load failed: {e}")
             _park_factors = {}
-    return _park_factors.get(venue_name, 1.00)
+    if venue_name not in _park_factors:
+        logger.warning(
+            f"MLB park factor: no entry for venue '{venue_name}' — using neutral "
+            f"1.00 (static/mlb_park_factors.json key drift; fix it)")
+        return 1.00
+    return _park_factors[venue_name]
 
 
 def get_schedule(date_iso):

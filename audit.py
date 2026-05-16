@@ -327,6 +327,27 @@ def phase15_data():
     except Exception as e:
         decision(f"MLB FIP constant fetch raised: {e}")
 
+    # MLB park-factor coverage — every venue the MLB Stats API serves MUST have a
+    # key in static/mlb_park_factors.json. A miss = silent 1.00 fallback, which
+    # corrupts every home F5 total for that team (renamed/relocated parks drift).
+    try:
+        year = datetime.now(timezone.utc).year
+        r = requests.get(
+            f"https://statsapi.mlb.com/api/v1/teams?sportId=1&season={year}", timeout=20)
+        r.raise_for_status()
+        venues = {t.get("venue", {}).get("name", "")
+                  for t in r.json().get("teams", []) if t.get("venue", {}).get("name")}
+        with open(os.path.join(REPO, "static", "mlb_park_factors.json")) as f:
+            pf = json.load(f)
+        missing = sorted(v for v in venues if v not in pf)
+        if missing:
+            decision(f"MLB park factors: {len(missing)} venue(s) have NO entry — "
+                     f"silent 1.00 fallback corrupts those teams' home games: {missing}")
+        else:
+            ok(f"MLB park factors: all {len(venues)} active venues covered")
+    except Exception as e:
+        decision(f"MLB park-factor coverage check raised: {e}")
+
 
 def phase2_pick_sanity(nhl_picks, mlb_picks):
     logger.info("=== PHASE 2 — pick sanity ===")
