@@ -85,13 +85,14 @@ def extract_totals(event_odds):
         fair_unders = []
         single_book_vigs = []
         for pair in sd.get("by_book", {}).values():
-            o = american_to_prob(pair["over"])
-            u = american_to_prob(pair["under"])
-            t = o + u
-            if t > 0:
-                fair_overs.append(o / t)
-                fair_unders.append(u / t)
-                single_book_vigs.append(t - 1.0)
+            if "over" in pair and "under" in pair:
+                o = american_to_prob(pair["over"])
+                u = american_to_prob(pair["under"])
+                t = o + u
+                if t > 0:
+                    fair_overs.append(o / t)
+                    fair_unders.append(u / t)
+                    single_book_vigs.append(t - 1.0)
         if fair_overs:
             fair_overs.sort()
             fair_unders.sort()

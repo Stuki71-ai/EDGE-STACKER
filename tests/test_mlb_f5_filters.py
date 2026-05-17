@@ -71,6 +71,6 @@ class TestExtractTotalsVig:
         by_line = extract_totals(event_odds)
         sd = by_line[4.5]
         assert "vig" in sd
-        # min of BookA (~0.045) and BookB (~0.13)
-        assert sd["vig"] < 0.06
-        assert sd["vig"] > 0.0
+        # min() must select BookA (-110/-110, hold = 2*(110/210) - 1 ~= 0.0476)
+        # over BookB (-130/-130, hold ~= 0.1304), proving the minimum was taken.
+        assert abs(sd["vig"] - 0.0476) < 1e-3
