@@ -207,9 +207,11 @@ def sync():
 
 def send(module, result):
     """POST the audited-clean picks JSON to the module's n8n webhook.
-    Raises RuntimeError if the webhook does not acknowledge the trigger."""
+    Raises requests.HTTPError on a 4xx/5xx status, or RuntimeError if the
+    webhook returns 2xx but does not acknowledge the trigger."""
     import requests
     r = requests.post(WEBHOOK[module], json=result, timeout=30)
+    r.raise_for_status()
     if "Workflow was started" not in r.text:
         raise RuntimeError(f"webhook did not accept: {r.text[:200]}")
 

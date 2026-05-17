@@ -10,6 +10,7 @@ import sys
 from unittest import mock
 
 import pytest
+import requests
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -52,10 +53,20 @@ def test_send_posts_webhook():
 
 def test_send_raises_when_webhook_not_acknowledged():
     bad = mock.Mock()
-    bad.text = "404 Not Found"
+    bad.text = "200 OK but no ack"
     with mock.patch("requests.post", return_value=bad):
         with pytest.raises(RuntimeError, match="webhook did not accept"):
             pipeline.send("mlb_f5", {"picks": []})
+
+
+def test_send_raises_on_bad_http_status():
+    """An HTTP 4xx/5xx is a direct, clear failure via raise_for_status()."""
+    bad = mock.Mock()
+    bad.raise_for_status.side_effect = requests.HTTPError("500 Server Error")
+    bad.text = "Workflow was started"   # text would pass — status must not
+    with mock.patch("requests.post", return_value=bad):
+        with pytest.raises(requests.HTTPError, match="500 Server Error"):
+            pipeline.send("nhl_sog", {"picks": []})
 
 
 # ── write_marker() ───────────────────────────────────────────────────
