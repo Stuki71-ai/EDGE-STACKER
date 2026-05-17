@@ -6,10 +6,12 @@ pure logic — the Finding type and classify_worst — is unit-tested here.
 """
 import sys
 import os
+from unittest import mock
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from shared.audit_checks import (Finding, INFRA, DATA, CODE, classify_worst,
-                                  check_picks)
+                                  check_picks, recompute_pick)
 
 
 def test_classify_worst_prefers_code():
@@ -47,3 +49,62 @@ def test_check_picks_malformed_pick_is_data_not_crash():
     assert data, "expected a DATA finding for the malformed pick"
     assert any("unprocessable" in f.text for f in data)
     assert any(f.pick_ref == "AWAY @ HOME — Over 4.5" for f in data)
+
+
+# ── recompute_pick tolerance parameter (issue I1) ──
+#
+# recompute_pick's MLB branch pulls live data (schedule, pitcher stats, wOBA
+# splits, park factor). We mock every upstream call so the test runs offline
+# and we fully control the two numbers the drift comparison uses:
+#   recomp       — what project_total_f5 returns (mocked to 4.20)
+#   logged_proj  — the pick's context["projection"] (set to 5.00)
+# That is |4.20 - 5.00| / 5.00 = 16% drift: a CODE finding at the tight 0.03
+# default, but clean once audit.py passes its day-after tolerance of 0.30.
+
+_MLB_PICK = {
+    "module": "mlb_f5",
+    "matchup": "AWAY @ HOME",
+    "pick_description": "F5 OVER 4.5",
+    "edge_pct": 0.12,
+    "context": {"line": 4.5, "projection": 5.00, "game_date": "2026-05-16",
+                "weather_factor": 1.0},
+}
+
+
+def _mlb_recompute_offline(pick, tolerance):
+    """Run recompute_pick('mlb_f5', ...) with all upstream MLB deps mocked so
+    project_total_f5 yields a fixed recomputed total of 4.20."""
+    sched_game = {
+        "away_team": "AWAY", "home_team": "HOME",
+        "away_team_id": 1, "home_team_id": 2,
+        "away_starter_id": 11, "home_starter_id": 22,
+        "venue": "Some Park",
+    }
+    with mock.patch("shared.mlb_data.get_schedule",
+                    return_value=[sched_game]), \
+         mock.patch("shared.mlb_data.get_pitcher_stats",
+                    return_value={"xFIP_30d": 4.0, "hand": "R"}), \
+         mock.patch("shared.mlb_data.get_team_woba_vs_hand",
+                    return_value=0.320), \
+         mock.patch("shared.mlb_data.park_factor", return_value=1.0), \
+         mock.patch("modules.mlb_f5.projections.project_total_f5",
+                    return_value=4.20):
+        return recompute_pick("mlb_f5", pick, tolerance=tolerance)
+
+
+def test_recompute_pick_drift_fails_at_tight_default():
+    """A 16% drift IS a CODE finding at the tight 0.03 default — proving the
+    check still fires (and that pipeline.py's behavior is unchanged)."""
+    findings = _mlb_recompute_offline(_MLB_PICK, tolerance=0.03)
+    code = [f for f in findings if f.kind == CODE]
+    assert code, "expected a CODE finding for 16% drift at tolerance 0.03"
+    assert any("drift" in f.text for f in code)
+
+
+def test_recompute_pick_respects_passed_tolerance():
+    """The same 16% drift produces NO finding when audit.py's 0.30 day-after
+    tolerance is passed — the looser threshold suppresses the false positive
+    while leaving the 0.03 default (pipeline.py) untouched."""
+    findings = _mlb_recompute_offline(_MLB_PICK, tolerance=0.30)
+    assert findings == [], (
+        f"expected no findings at tolerance 0.30, got {findings}")

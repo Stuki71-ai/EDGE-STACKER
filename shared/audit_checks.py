@@ -368,18 +368,25 @@ def _mlb_game_status(pick):
 
 # ════════════════════════════════════════════════════════════
 # recompute_pick — ported from audit.py phase25_recompute
-# Tolerance is TIGHT (<=3%) — pipeline audits immediately after generation,
-# so there is no next-day upstream data drift.
+# Default tolerance is TIGHT (<=3%) — pipeline.py audits immediately after
+# generation, so there is no next-day upstream data drift. The day-after CLI
+# audit (audit.py) passes a looser tolerance explicitly (see its call site).
 # ════════════════════════════════════════════════════════════
 RECOMPUTE_TOLERANCE = 0.03
 
 
-def recompute_pick(module, pick):
+def recompute_pick(module, pick, tolerance=RECOMPUTE_TOLERANCE):
     """Recompute one pick end-to-end from raw upstream data.
 
-    Mismatch beyond RECOMPUTE_TOLERANCE -> CODE (formula bug), unless the
-    cause is a pick-specific bad upstream value -> DATA with pick_ref.
-    Returns list[Finding].
+    Mismatch beyond `tolerance` -> CODE (formula bug), unless the cause is a
+    pick-specific bad upstream value -> DATA with pick_ref. Returns
+    list[Finding].
+
+    `tolerance` only governs the MLB projected-total drift comparison.
+    pipeline.py omits it (default 0.03 — immediate post-generation audit,
+    no drift). audit.py is the day-after CLI audit and passes a looser value
+    so benign next-day MLB Stats API data drift is not a false positive.
+    The NHL branch uses a plausibility band, not a tolerance — unaffected.
     """
     out = []
     ref = _pick_ref(pick)
@@ -455,11 +462,11 @@ def recompute_pick(module, pick):
                 return out
             lp = float(logged_proj)
             drift = abs(recomp - lp) / lp if lp else 1.0
-            if drift > RECOMPUTE_TOLERANCE:
+            if drift > tolerance:
                 out.append(Finding(CODE, f"MLB recompute: {matchup} logged "
                                          f"proj {lp} vs recomputed "
                                          f"{recomp:.2f} — {drift:.1%} drift > "
-                                         f"{RECOMPUTE_TOLERANCE:.0%}"))
+                                         f"{tolerance:.0%}"))
         except Exception as e:
             out.append(Finding(CODE, f"MLB recompute raised: {e}"))
 
