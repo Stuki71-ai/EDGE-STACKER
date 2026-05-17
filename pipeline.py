@@ -6,7 +6,6 @@ Holds the email (ntfy only) on any code/design bug or unresolved finding.
 See docs/plans/2026-05-17-self-healing-pipeline-design.md
 """
 import argparse, json, logging, os, subprocess, sys
-from datetime import datetime
 from pathlib import Path
 
 REPO = "/root/edge-stacker"
@@ -42,7 +41,8 @@ def should_run(module, et_hour):
 
 def load_env(path=os.path.join(REPO, ".env")):
     """Load KEY=VALUE lines from .env into os.environ (so the main.py subprocess
-    inherits ODDS_API_KEY etc.)."""
+    inherits ODDS_API_KEY etc.).
+    Expects simple KEY=VALUE lines with no inline comments (opaque tokens only)."""
     if not os.path.exists(path):
         return
     for line in Path(path).read_text().splitlines():
@@ -56,10 +56,13 @@ def load_env(path=os.path.join(REPO, ".env")):
 def generate(module):
     """Run main.py for one module, return the parsed picks JSON dict.
     Raises RuntimeError on failure (caught by the top-level guard)."""
-    proc = subprocess.run(
-        [sys.executable, "main.py", "--modules", module, "--json-only"],
-        cwd=REPO, capture_output=True, text=True, timeout=600,
-    )
+    try:
+        proc = subprocess.run(
+            [sys.executable, "main.py", "--modules", module, "--json-only"],
+            cwd=REPO, capture_output=True, text=True, timeout=600,
+        )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("main.py timed out after 600s")
     if proc.returncode != 0:
         raise RuntimeError(f"main.py failed (rc={proc.returncode}): {proc.stderr[-500:]}")
     try:
