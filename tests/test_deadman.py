@@ -45,3 +45,13 @@ def test_marker_fresh_silent(tmp_path, monkeypatch):
     monkeypatch.setattr(deadman, "ntfy", lambda title, body: calls.append(title))
     deadman.main(["--module", "nhl_sog"])
     assert calls == []
+
+
+def test_marker_malformed_alerts(tmp_path, monkeypatch):
+    calls = []
+    (tmp_path / "nhl_sog.json").write_text("not json")
+    monkeypatch.setattr(deadman, "MARKER_DIR", str(tmp_path))
+    monkeypatch.setattr(deadman, "ntfy", lambda title, body: calls.append(title))
+    deadman.main(["--module", "nhl_sog"])
+    assert len(calls) == 1
+    assert "did NOT run" in calls[0]

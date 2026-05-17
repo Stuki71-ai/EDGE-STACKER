@@ -9,7 +9,7 @@ pipeline left a FRESH completion marker today.
   fresh marker  -> stay silent, exit 0 (pipeline already handled its outcome)
   missing/stale -> ntfy "pipeline did NOT run"
 """
-import argparse, json, logging, sys, traceback
+import argparse, json, logging, traceback
 from datetime import datetime, timezone
 from pathlib import Path
 
