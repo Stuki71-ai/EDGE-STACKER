@@ -116,14 +116,14 @@ def test_recompute_pick_respects_passed_tolerance():
 # the core pipeline files present in the repo. We scope these tests to the
 # required-files logic by mocking _sh so the docker probe reports the container
 # Up — that leaves only the os.path.exists file checks, which run offline.
-# The required files are pipeline.py / deadman.py / main.py; the obsolete
+# The required files are pipeline.py / deadman.py; the obsolete
 # run_afternoon_*.sh / run_audit.sh scripts (deleted in the cron cutover) must
 # NOT produce a finding.
 
 
 def test_check_infra_no_finding_when_core_files_present(tmp_path):
-    """All three core files present -> NO required-files (CODE) finding."""
-    for fname in ("pipeline.py", "deadman.py", "main.py"):
+    """Both core files present -> NO required-files (CODE) finding."""
+    for fname in ("pipeline.py", "deadman.py"):
         (tmp_path / fname).write_text("# stub\n")
     with mock.patch("shared.audit_checks._sh", return_value=(0, "Up 2 hours")):
         findings = check_infra(str(tmp_path), "n8n-n8n-1")
@@ -132,8 +132,7 @@ def test_check_infra_no_finding_when_core_files_present(tmp_path):
 
 def test_check_infra_missing_core_file_is_code_finding(tmp_path):
     """A missing core file (deadman.py) -> a CODE finding naming it."""
-    for fname in ("pipeline.py", "main.py"):   # deadman.py deliberately absent
-        (tmp_path / fname).write_text("# stub\n")
+    (tmp_path / "pipeline.py").write_text("# stub\n")  # deadman.py deliberately absent
     with mock.patch("shared.audit_checks._sh", return_value=(0, "Up 2 hours")):
         findings = check_infra(str(tmp_path), "n8n-n8n-1")
     code = [f for f in findings if f.kind == CODE]
@@ -145,7 +144,7 @@ def test_check_infra_deleted_shell_scripts_do_not_flag(tmp_path):
     """The deleted run_afternoon_*.sh / run_audit.sh scripts must NOT cause a
     finding even when absent — the stale required-files list was the post-
     cutover bug that HELD every pipeline email."""
-    for fname in ("pipeline.py", "deadman.py", "main.py"):
+    for fname in ("pipeline.py", "deadman.py"):
         (tmp_path / fname).write_text("# stub\n")
     # the obsolete shell scripts are NOT created — they no longer exist
     with mock.patch("shared.audit_checks._sh", return_value=(0, "Up 2 hours")):

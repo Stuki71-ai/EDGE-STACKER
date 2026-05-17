@@ -144,7 +144,7 @@ def check_infra(repo, n8n_container):
     """Audit infra: n8n container up + core pipeline files present.
 
     n8n down -> INFRA (mechanically auto-fixable).
-    Missing core file (pipeline.py/deadman.py/main.py) -> CODE (a deploy is
+    Missing core file (pipeline.py/deadman.py) -> CODE (a deploy is
     broken, not auto-fixable).
     """
     out = []
@@ -159,7 +159,7 @@ def check_infra(repo, n8n_container):
     # core pipeline files present — these are what the current VPS-native
     # pipeline needs to function (the obsolete run_afternoon_*.sh / run_audit.sh
     # shell scripts were deleted in the cron cutover and are NOT required).
-    for fname in ("pipeline.py", "deadman.py", "main.py"):
+    for fname in ("pipeline.py", "deadman.py"):
         if not os.path.exists(os.path.join(repo, fname)):
             out.append(Finding(CODE, f"Missing required file: {fname}"))
 
