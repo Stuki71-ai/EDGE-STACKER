@@ -174,11 +174,9 @@ def _build_subject(date_str, placed):
     """Build subject line including module names with picks.
 
     Format: 'EDGE STACKER / NHL SHOTS ON GOAL - 03.05.2026 - 3 picks'
-            'EDGE STACKER LOCAL / NHL SHOTS ON GOAL - ...' when USE_NBA_API_FULL set
             'EDGE STACKER - 03.05.2026 - sitting out' (no picks)
     """
-    import os
-    prefix = "EDGE STACKER LOCAL" if os.environ.get("USE_NBA_API_FULL") else "EDGE STACKER"
+    prefix = "EDGE STACKER"
     MODULE_NAMES = {
         "nhl_sog": "NHL SHOTS ON GOAL",
         "mlb_f5": "MLB F5 TOTALS",
