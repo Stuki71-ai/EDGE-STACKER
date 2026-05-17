@@ -136,3 +136,25 @@ class TestFilters:
         bad_vig = {"best_over_odds": -150, "best_under_odds": -150, "over_odds": -150, "under_odds": -150}
         passed, reason = passes_filters(self._games(10, 18), "C", bad_vig, 0.10)
         assert not passed
+
+    def test_vig_uses_true_single_book_not_cross_book(self):
+        # best_over/-under from two different books look like a low cross-book
+        # vig, but the real single-book hold (stored in "vig") is above MAX_VIG.
+        # The filter must reject based on the true single-book hold.
+        sd = {
+            "best_over_odds": -105, "best_under_odds": -105,  # cross-book ~4.6% vig
+            "over_odds": -110, "under_odds": -110,
+            "vig": 0.10,  # true min single-book hold = 10% > MAX_VIG 0.08
+        }
+        passed, reason = passes_filters(self._games(10, 18), "C", sd, 0.10)
+        assert not passed
+        assert "Vig" in reason
+
+    def test_vig_field_passes_when_low(self):
+        sd = {
+            "best_over_odds": -110, "best_under_odds": -110,
+            "over_odds": -110, "under_odds": -110,
+            "vig": 0.045,
+        }
+        passed, reason = passes_filters(self._games(10, 18), "C", sd, 0.10)
+        assert passed

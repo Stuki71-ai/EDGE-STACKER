@@ -133,9 +133,14 @@ def run(today):
             if position == "G":
                 continue
 
-            # Vig pre-filter (saves API calls)
+            # Vig pre-filter (saves gamelog work). Use the TRUE single-book
+            # hold from odds.extract_props — NOT calculate_vig(best_over,
+            # best_under), which mixes two books and understates real hold.
             from staking import calculate_vig
-            if calculate_vig(over_odds, under_odds) > filters.MAX_VIG:
+            pre_vig = sd.get("vig")
+            if pre_vig is None:
+                pre_vig = calculate_vig(over_odds, under_odds)
+            if pre_vig > filters.MAX_VIG:
                 continue
 
             # Fetch FULL-SEASON gamelog (cache per-player). EWMA weights recent more.

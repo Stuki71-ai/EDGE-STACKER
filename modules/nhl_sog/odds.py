@@ -90,9 +90,20 @@ def extract_props(event_odds):
                 mid = len(ol) // 2
                 sd[key] = ol[mid] if len(ol) % 2 else (ol[mid - 1] + ol[mid]) // 2
 
-        # Market no-vig fair probability (median across books with both sides)
+        # Market no-vig fair probability (median across books with both sides).
+        # Also compute the TRUE single-book vig (hold). The cross-book vig
+        # calculate_vig(best_over_odds, best_under_odds) takes the best price
+        # on EACH side, possibly from two DIFFERENT books — that combination
+        # is not a hold any single book actually offers and systematically
+        # understates true market hold (it is <= every real single-book hold).
+        # The vig filter exists to reject high-hold/soft markets, so it must
+        # use a real per-book hold. Store the MINIMUM single-book hold among
+        # books quoting BOTH sides (the most generous real market we could
+        # bet into); fall back to the cross-book figure only if no single
+        # book quotes both sides.
         no_vig_overs = []
         no_vig_unders = []
+        single_book_vigs = []
         for book_pair in sd.get("by_book", {}).values():
             if "over" in book_pair and "under" in book_pair:
                 over_p = american_to_prob(book_pair["over"])
@@ -101,11 +112,14 @@ def extract_props(event_odds):
                 if total > 0:
                     no_vig_overs.append(over_p / total)
                     no_vig_unders.append(under_p / total)
+                    single_book_vigs.append(total - 1.0)
         if no_vig_overs:
             no_vig_overs.sort()
             no_vig_unders.sort()
             mid = len(no_vig_overs) // 2
             sd["fair_over_prob"] = no_vig_overs[mid]
             sd["fair_under_prob"] = no_vig_unders[mid]
+        if single_book_vigs:
+            sd["vig"] = min(single_book_vigs)
 
     return props

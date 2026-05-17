@@ -58,12 +58,17 @@ def passes_filters(player_games, position, stat_data, edge_pct):
     if avg_toi < min_toi_required:
         return False, f"Avg TOI {avg_toi/60:.1f} min < {min_toi_required/60:.0f} min"
 
-    over = stat_data.get("best_over_odds") or stat_data.get("over_odds")
-    under = stat_data.get("best_under_odds") or stat_data.get("under_odds")
-    if over is not None and under is not None:
-        vig = calculate_vig(over, under)
-        if vig > MAX_VIG:
-            return False, f"Vig {vig:.3f} > {MAX_VIG}"
+    # Use the TRUE single-book vig (hold) computed in odds.extract_props.
+    # calculate_vig(best_over, best_under) would mix prices from two
+    # different books and understate the real hold.
+    vig = stat_data.get("vig")
+    if vig is None:
+        over = stat_data.get("best_over_odds") or stat_data.get("over_odds")
+        under = stat_data.get("best_under_odds") or stat_data.get("under_odds")
+        if over is not None and under is not None:
+            vig = calculate_vig(over, under)
+    if vig is not None and vig > MAX_VIG:
+        return False, f"Vig {vig:.3f} > {MAX_VIG}"
 
     if edge_pct < MIN_EDGE:
         return False, f"Edge {edge_pct:.1%} < {MIN_EDGE:.1%}"
