@@ -80,19 +80,30 @@ def run_full_audit(module, result):
     from shared import audit_checks as ac
     picks = result.get("picks", [])
     findings = []
-    findings += ac.check_code_parity(REPO)
-    findings += ac.check_infra(REPO, "n8n-n8n-1")
-    findings += ac.check_data_fetch(module)
-    findings += ac.check_picks(module, picks)
+    checks = [
+        ("code_parity", lambda: ac.check_code_parity(REPO)),
+        ("infra",       lambda: ac.check_infra(REPO, "n8n-n8n-1")),
+        ("data_fetch",  lambda: ac.check_data_fetch(module)),
+        ("picks",       lambda: ac.check_picks(module, picks)),
+    ]
     if picks:
-        findings += ac.recompute_pick(module, picks[0])
+        checks.append(("recompute", lambda: ac.recompute_pick(module, picks[0])))
+    for name, fn in checks:
+        try:
+            findings += fn()
+        except Exception as e:
+            findings.append(ac.Finding(ac.CODE, f"audit check '{name}' raised: {e}"))
     return findings
 
 
 def autofix_infra(finding):
     """Apply a mechanical infra fix. Return True on success."""
     if "n8n" in finding.text:
-        rc = subprocess.run("docker start n8n-n8n-1", shell=True).returncode
+        try:
+            rc = subprocess.run("docker start n8n-n8n-1", shell=True,
+                                timeout=120).returncode
+        except subprocess.TimeoutExpired:
+            return False
         return rc == 0
     # add other infra fixes here as the audit grows
     return False

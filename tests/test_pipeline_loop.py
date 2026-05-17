@@ -5,6 +5,7 @@ is exercised in isolation (no VPS, no network, no live audit deps).
 drop_picks is NOT mocked: it runs the real audit_checks._pick_ref, so the
 DATA scenario proves the dropped pick is matched via the genuine ref.
 """
+import subprocess
 import sys
 import os
 from unittest import mock
@@ -130,3 +131,37 @@ def test_never_clean_holds_after_max_attempts():
     assert findings == infra
     assert gen.call_count == pipeline.MAX_ATTEMPTS
     assert aud.call_count == pipeline.MAX_ATTEMPTS
+
+
+# ── Fail-safe: autofix_infra timeout -> failed fix (False) ───────────
+def test_autofix_infra_returns_false_on_timeout():
+    """A wedged Docker daemon must not hang the pipeline: a timed-out
+    `docker start` is treated as a failed fix (False), which makes
+    heal_loop HELD — the correct safe outcome."""
+    finding = Finding(INFRA, "n8n container 'n8n-n8n-1' is not Up")
+    with mock.patch("pipeline.subprocess.run",
+                    side_effect=subprocess.TimeoutExpired("docker", 120)):
+        assert pipeline.autofix_infra(finding) is False
+
+
+# ── Fail-safe: run_full_audit guards a raising check function ────────
+def test_run_full_audit_guards_raising_check():
+    """If a check function raises (e.g. a malformed non-dict pick makes
+    check_picks throw), run_full_audit must NOT propagate the exception —
+    it converts it into a CODE Finding so heal_loop returns HELD safely,
+    while the other checks' findings still come through."""
+    other = Finding(INFRA, "n8n container 'n8n-n8n-1' is not Up")
+    with mock.patch("shared.audit_checks.check_code_parity", return_value=[]), \
+         mock.patch("shared.audit_checks.check_infra", return_value=[other]), \
+         mock.patch("shared.audit_checks.check_data_fetch", return_value=[]), \
+         mock.patch("shared.audit_checks.check_picks",
+                    side_effect=AttributeError("'str' object has no attribute 'get'")), \
+         mock.patch("shared.audit_checks.recompute_pick", return_value=[]):
+        findings = pipeline.run_full_audit("nhl_sog",
+                                           {"picks": [_nhl_pick("Pastrnak")]})
+    # the raising check became a CODE Finding instead of an exception
+    code = [f for f in findings if f.kind == CODE]
+    assert len(code) == 1
+    assert "check 'picks' raised" in code[0].text
+    # the other checks' findings are still present
+    assert other in findings
