@@ -161,12 +161,12 @@ class TestPortfolioLimits:
     def test_module_cap(self):
         # Multiple picks from same module
         picks = [
-            _make_pick(module="nba_props", model_prob=0.60, odds=-110, edge=0.08),
-            _make_pick(module="nba_props", model_prob=0.58, odds=-108, edge=0.06),
-            _make_pick(module="nba_props", model_prob=0.57, odds=-106, edge=0.05),
+            _make_pick(module="nhl_sog", model_prob=0.60, odds=-110, edge=0.08),
+            _make_pick(module="nhl_sog", model_prob=0.58, odds=-108, edge=0.06),
+            _make_pick(module="nhl_sog", model_prob=0.57, odds=-106, edge=0.05),
         ]
         result, dd = apply_portfolio_limits(picks, 5000, 5000)
-        total_module = sum(p.bet_size for p in result if p.module == "nba_props")
+        total_module = sum(p.bet_size for p in result if p.module == "nhl_sog")
         assert total_module <= 250.0  # 5% of $5000
 
     def test_drawdown_entry(self):

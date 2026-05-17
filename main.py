@@ -28,32 +28,11 @@ def active_modules(today: date) -> list:
 
     active = []
 
-    # Module 1: NCAAF Weather -- Sep-Jan, Thu/Fri/Sat
-    if month in (9, 10, 11, 12) or (month == 1 and day <= 15):
-        if dow in (3, 4, 5):  # Thu, Fri, Sat
-            active.append("ncaaf_weather")
-
-    # Module 2: NBA Props -- Oct 15 through Jun 20, daily
-    if (month == 10 and day >= 15) or month in (11, 12, 1, 2, 3, 4, 5) or (month == 6 and day <= 20):
-        active.append("nba_props")
-
-    # Module 3: NCAAF Bowls -- Dec 14 through Jan 10
-    if (month == 12 and day >= 14) or (month == 1 and day <= 10):
-        active.append("ncaaf_bowls")
-
-    # Module 4: NCAAB KenPom -- Nov 1 through Apr 7 (covers NCAA Tournament final Apr 6)
-    if month in (11, 12, 1, 2, 3) or (month == 4 and day <= 7):
-        active.append("ncaab_kenpom")
-
-    # Module 5: NCAAB Conf Tournament -- Mar 1-15
-    if month == 3 and day <= 15:
-        active.append("ncaab_conf_tourney")
-
-    # Module 6: NHL Shots on Goal -- Oct 7 through Jun 20 (regular season + Stanley Cup playoffs)
+    # Module 1: NHL Shots on Goal -- Oct 7 through Jun 20 (regular season + Stanley Cup playoffs)
     if (month == 10 and day >= 7) or month in (11, 12, 1, 2, 3, 4, 5) or (month == 6 and day <= 20):
         active.append("nhl_sog")
 
-    # Module 7: MLB F5 Totals -- Mar 25 through Oct 31 (regular season + playoffs)
+    # Module 2: MLB F5 Totals -- Mar 25 through Oct 31 (regular season + playoffs)
     if (month == 3 and day >= 25) or month in (4, 5, 6, 7, 8, 9, 10):
         active.append("mlb_f5")
 

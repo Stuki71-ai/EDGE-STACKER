@@ -10,69 +10,10 @@ from main import active_modules, load_bankroll, load_daily_exposure
 
 
 class TestModuleCalendar:
-    def test_march_31_tuesday(self):
-        # Mar 31, 2026 = Tuesday (dow=1)
-        mods = active_modules(date(2026, 3, 31))
-        assert "nba_props" in mods
-        assert "ncaab_kenpom" in mods
-        assert "ncaaf_weather" not in mods
-        assert "ncaab_conf_tourney" not in mods  # Mar 31 > 15
-
-    def test_september_saturday(self):
-        # Sep 5, 2026 = Saturday
-        mods = active_modules(date(2026, 9, 5))
-        assert "ncaaf_weather" in mods
-        assert "nba_props" not in mods
-
-    def test_september_wednesday(self):
-        # Sep 2, 2026 = Wednesday -- no NCAAF on weekdays
-        mods = active_modules(date(2026, 9, 2))
-        assert "ncaaf_weather" not in mods
-        assert "nba_props" not in mods
-
-    def test_december_saturday(self):
-        d = date(2026, 12, 19)  # Saturday in Dec
-        mods = active_modules(d)
-        assert "ncaaf_weather" in mods  # Sep-Jan, Sat
-        assert "nba_props" in mods
-        assert "ncaaf_bowls" in mods  # Dec 14+
-        assert "ncaab_kenpom" in mods  # Nov-Mar
-
-    def test_bowl_season_jan(self):
-        d = date(2027, 1, 2)  # Saturday, Jan 2, 2027
-        mods = active_modules(d)
-        assert "ncaaf_bowls" in mods  # Jan <= 10
-        assert "ncaaf_weather" in mods  # Jan <= 15, Sat
-
-    def test_after_bowls(self):
-        d = date(2027, 1, 11)
-        mods = active_modules(d)
-        assert "ncaaf_bowls" not in mods  # Jan 11 > 10
-
-    def test_conf_tourney_active(self):
-        d = date(2026, 3, 10)  # Tuesday in March 1-15
-        mods = active_modules(d)
-        assert "ncaab_conf_tourney" in mods
-        assert "ncaab_kenpom" in mods
-        assert "nba_props" in mods
-
-    def test_conf_tourney_over(self):
-        d = date(2026, 3, 16)
-        mods = active_modules(d)
-        assert "ncaab_conf_tourney" not in mods
-
     def test_summer_mlb_only(self):
         # Deep summer: only the MLB F5 module is active
         d = date(2026, 7, 15)
         assert active_modules(d) == ["mlb_f5"]
-
-    def test_nba_starts_oct15(self):
-        assert "nba_props" not in active_modules(date(2026, 10, 14))
-        assert "nba_props" in active_modules(date(2026, 10, 15))
-
-    def test_nba_ends_jun20(self):
-        assert "nba_props" in active_modules(date(2026, 6, 20))
-        assert "nba_props" not in active_modules(date(2026, 6, 21))
 
 
 class TestBankrollState:

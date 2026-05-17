@@ -1,4 +1,4 @@
-"""ESPN-based NHL data client (mirrors espn_nba.py pattern)."""
+"""ESPN-based NHL data client."""
 
 import logging
 import requests

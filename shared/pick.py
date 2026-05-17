@@ -5,7 +5,7 @@ from typing import Optional
 @dataclass
 class Pick:
     # -- Identity --
-    module: str                    # "ncaaf_weather", "nba_props", etc.
+    module: str                    # "nhl_sog", "mlb_f5"
     matchup: str                   # "Alabama @ LSU" or "LeBron James PTS"
     pick_description: str          # "UNDER 48.5" or "LeBron OVER 27.5 PTS"
 

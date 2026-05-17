@@ -12,7 +12,7 @@ from output import build_output, output_empty
 
 def _make_placed_pick():
     return Pick(
-        module="ncaab_conf_tourney",
+        module="mlb_f5",
         matchup="Duke vs NC State",
         pick_description="NC STATE +7.5",
         best_odds_raw=-108,
@@ -33,7 +33,7 @@ def _make_placed_pick():
 
 def _make_skipped_pick():
     return Pick(
-        module="ncaab_kenpom",
+        module="nhl_sog",
         matchup="Vermont vs UMBC",
         pick_description="VERMONT +2.5",
         best_odds_raw=-110,
@@ -49,7 +49,7 @@ class TestBuildOutput:
     def test_json_schema_fields(self):
         placed = [_make_placed_pick()]
         skipped = [_make_skipped_pick()]
-        output = build_output(placed, skipped, 5000, 5200, ["ncaab_kenpom", "ncaab_conf_tourney"])
+        output = build_output(placed, skipped, 5000, 5200, ["nhl_sog", "mlb_f5"])
 
         assert "date" in output
         assert "run_time" in output
@@ -68,7 +68,7 @@ class TestBuildOutput:
     def test_summary_fields(self):
         placed = [_make_placed_pick()]
         skipped = [_make_skipped_pick()]
-        output = build_output(placed, skipped, 5000, 5200, ["ncaab_kenpom"])
+        output = build_output(placed, skipped, 5000, 5200, ["nhl_sog"])
 
         summary = output["summary"]
         assert summary["picks_placed"] == 1
@@ -79,7 +79,7 @@ class TestBuildOutput:
 
     def test_pick_dict_fields(self):
         placed = [_make_placed_pick()]
-        output = build_output(placed, [], 5000, 5200, ["ncaab_conf_tourney"])
+        output = build_output(placed, [], 5000, 5200, ["mlb_f5"])
 
         pick_dict = output["picks"][0]
         required_fields = [
@@ -93,7 +93,7 @@ class TestBuildOutput:
 
     def test_skipped_dict_fields(self):
         skipped = [_make_skipped_pick()]
-        output = build_output([], skipped, 5000, 5200, ["ncaab_kenpom"])
+        output = build_output([], skipped, 5000, 5200, ["nhl_sog"])
 
         skip_dict = output["skipped"][0]
         assert "module" in skip_dict
@@ -106,13 +106,13 @@ class TestBuildOutput:
     def test_email_body_contains_key_sections(self):
         placed = [_make_placed_pick()]
         skipped = [_make_skipped_pick()]
-        output = build_output(placed, skipped, 5000, 5200, ["ncaab_conf_tourney"])
+        output = build_output(placed, skipped, 5000, 5200, ["mlb_f5"])
 
         email = output["email_body"]
         assert "Duke" in email or "NC State" in email
 
     def test_empty_picks_no_crash(self):
-        output = build_output([], [], 5000, 5000, ["nba_props"])
+        output = build_output([], [], 5000, 5000, ["nhl_sog"])
         assert output["picks"] == []
         assert output["summary"]["picks_placed"] == 0
 
@@ -122,7 +122,7 @@ class TestBuildOutput:
 
     def test_json_serializable(self):
         placed = [_make_placed_pick()]
-        output = build_output(placed, [], 5000, 5200, ["ncaab_conf_tourney"])
+        output = build_output(placed, [], 5000, 5200, ["mlb_f5"])
         # Should not raise
         json_str = json.dumps(output)
         # Should parse back
@@ -132,7 +132,7 @@ class TestBuildOutput:
 
     def test_daily_exposure_includes_prior(self):
         placed = [_make_placed_pick()]
-        output = build_output(placed, [], 5000, 5200, ["ncaab_conf_tourney"],
+        output = build_output(placed, [], 5000, 5200, ["mlb_f5"],
                               prior_exposure=85.0)
         # daily_exposure should be prior (85) + current run (150)
         assert output["daily_exposure"] == 235.0
@@ -140,7 +140,7 @@ class TestBuildOutput:
 
 class TestOutputEmpty:
     def test_output_empty_prints_json(self, capsys):
-        output_empty("No active modules today.", 5000, 5000, ["nba_props"])
+        output_empty("No active modules today.", 5000, 5000, ["nhl_sog"])
         captured = capsys.readouterr()
         data = json.loads(captured.out)
         assert data["picks"] == []
@@ -150,7 +150,7 @@ class TestOutputEmpty:
         assert "sitting out" in data["subject"]
 
     def test_output_empty_has_all_schema_fields(self, capsys):
-        output_empty("Test.", 5000, 5200, ["nba_props"])
+        output_empty("Test.", 5000, 5200, ["nhl_sog"])
         captured = capsys.readouterr()
         data = json.loads(captured.out)
         assert "run_time" in data
@@ -158,4 +158,4 @@ class TestOutputEmpty:
         assert data["peak_bankroll"] == 5200
         assert data["daily_exposure"] == 0.0
         assert data["daily_limit"] == 400.0
-        assert data["modules_run"] == ["nba_props"]
+        assert data["modules_run"] == ["nhl_sog"]

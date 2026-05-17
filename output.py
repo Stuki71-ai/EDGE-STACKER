@@ -71,15 +71,10 @@ def build_email(placed, skipped, bankroll, peak, modules_run,
     kelly_label = f"{'Eighth' if km == KELLY_MULTIPLIER_DRAWDOWN else 'Quarter'} ({km})"
     exposure_pct = (daily_exposure / daily_limit * 100) if daily_limit > 0 else 0
 
-    STAT_FULL = {"PTS": "Points", "REB": "Rebounds", "AST": "Assists", "S": "Shots"}
+    STAT_FULL = {"S": "Shots"}
     MODULE_NAMES = {
-        "ncaaf_weather": "NCAAF WEATHER UNDERS",
-        "nba_props": "NBA PLAYER PROPS",
         "nhl_sog": "NHL SHOTS ON GOAL",
         "mlb_f5": "MLB F5 TOTALS",
-        "ncaaf_bowls": "NCAAF BOWL UNDERDOGS",
-        "ncaab_kenpom": "NCAAB KENPOM DISAGREEMENT",
-        "ncaab_conf_tourney": "NCAAB CONFERENCE TOURNAMENT",
     }
 
     h = []
@@ -179,19 +174,14 @@ def _build_subject(date_str, placed):
     """Build subject line including module names with picks.
 
     Format: 'EDGE STACKER / NHL SHOTS ON GOAL - 03.05.2026 - 3 picks'
-            'EDGE STACKER LOCAL / NBA PLAYER PROPS - ...' when USE_NBA_API_FULL set
+            'EDGE STACKER LOCAL / NHL SHOTS ON GOAL - ...' when USE_NBA_API_FULL set
             'EDGE STACKER - 03.05.2026 - sitting out' (no picks)
     """
     import os
     prefix = "EDGE STACKER LOCAL" if os.environ.get("USE_NBA_API_FULL") else "EDGE STACKER"
     MODULE_NAMES = {
-        "ncaaf_weather": "NCAAF WEATHER UNDERS",
-        "nba_props": "NBA PLAYER PROPS",
         "nhl_sog": "NHL SHOTS ON GOAL",
         "mlb_f5": "MLB F5 TOTALS",
-        "ncaaf_bowls": "NCAAF BOWL UNDERDOGS",
-        "ncaab_kenpom": "NCAAB KENPOM DISAGREEMENT",
-        "ncaab_conf_tourney": "NCAAB CONFERENCE TOURNAMENT",
     }
 
     # Reverse-sort the date YYYY-MM-DD -> DD.MM.YYYY
@@ -234,36 +224,3 @@ def _format_date(date_str):
         return dt.strftime("%b %d, %Y")
     except ValueError:
         return date_str
-
-
-def _module_context_line(p):
-    ctx = p.context
-    if p.module == "ncaaf_weather":
-        return f"Wind {ctx.get('wind_mph', '?')}mph, {ctx.get('temp_f', '?')}\u00b0F"
-    elif p.module == "nba_props":
-        return f"{ctx.get('player', '?')} {ctx.get('stat', '?')} proj {ctx.get('projection', '?')} vs line {ctx.get('line', '?')}"
-    elif p.module == "ncaaf_bowls":
-        return f"Bowl +{ctx.get('spread', '?')}"
-    elif p.module == "ncaab_kenpom":
-        div = ctx.get('divergence', 0)
-        return f"KenPom +{div:.1f} divergence"
-    elif p.module == "ncaab_conf_tourney":
-        return f"{ctx.get('conference', '?')} {ctx.get('round', '?').replace('_', ' ').title()}"
-    return ""
-
-
-def _module_detail_line(p):
-    ctx = p.context
-    if p.module == "ncaaf_weather":
-        return f"Precip: {ctx.get('precipitation', 'Clear')} | Venue: {ctx.get('venue', '?')}"
-    elif p.module == "nba_props":
-        out = ctx.get("teammate_out")
-        out_str = f"OUT: {out}" if out else "No key injuries"
-        return f"L10 avg: {ctx.get('l10_avg', '?')} | Opp DRTG: {ctx.get('opp_drtg', '?')} | {out_str}"
-    elif p.module == "ncaaf_bowls":
-        return f"Fav conf: {ctx.get('fav_conference', '?')} | Dog conf: {ctx.get('dog_conference', '?')}"
-    elif p.module == "ncaab_kenpom":
-        return f"KenPom margin: {ctx.get('kenpom_margin', '?')} | Market: {ctx.get('market_spread', '?')} | Conf: {'Yes' if ctx.get('is_conference') else 'No'}"
-    elif p.module == "ncaab_conf_tourney":
-        return f"Historical: {ctx.get('conference', '?')} {ctx.get('round', '?')} {ctx.get('historical_ats', 0):.1%} ATS ({ctx.get('sample', 0)} games)"
-    return ""
