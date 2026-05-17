@@ -61,9 +61,10 @@ class TestModuleCalendar:
         mods = active_modules(d)
         assert "ncaab_conf_tourney" not in mods
 
-    def test_summer_dead(self):
+    def test_summer_mlb_only(self):
+        # Deep summer: only the MLB F5 module is active
         d = date(2026, 7, 15)
-        assert active_modules(d) == []
+        assert active_modules(d) == ["mlb_f5"]
 
     def test_nba_starts_oct15(self):
         assert "nba_props" not in active_modules(date(2026, 10, 14))

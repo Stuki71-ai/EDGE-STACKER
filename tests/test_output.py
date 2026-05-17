@@ -146,7 +146,8 @@ class TestOutputEmpty:
         assert data["picks"] == []
         assert data["skipped"] == []
         assert "email_body" in data
-        assert "No qualifying picks" in data["email_body"]
+        assert data["email_body"] == ""
+        assert "sitting out" in data["subject"]
 
     def test_output_empty_has_all_schema_fields(self, capsys):
         output_empty("Test.", 5000, 5200, ["nba_props"])

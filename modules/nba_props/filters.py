@@ -65,7 +65,7 @@ def passes_filters(player_games, stat_data, edge_pct, minutes_stable):
         if vig > config.PROP_MAX_VIG:
             return False, f"Vig {vig:.3f} > {config.PROP_MAX_VIG}"
 
-    # STEP 4: Edge >= 6%?
+    # STEP 4: Edge >= PROP_MIN_EDGE?
     if edge_pct < config.PROP_MIN_EDGE:
         return False, f"Edge {edge_pct:.1%} < {config.PROP_MIN_EDGE:.1%}"
 

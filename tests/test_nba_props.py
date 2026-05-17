@@ -128,5 +128,5 @@ class TestPropFilters:
     def test_qualifying(self):
         games = [{"PTS": 30, "MIN": 32}] * 12
         stat_data = {"best_over_odds": -110, "best_under_odds": -110, "over_odds": -110, "under_odds": -110}
-        passes, reason = passes_filters(games, stat_data, 0.09, True)
+        passes, reason = passes_filters(games, stat_data, 0.12, True)
         assert passes
