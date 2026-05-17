@@ -11,7 +11,7 @@ from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from shared.audit_checks import (Finding, INFRA, DATA, CODE, classify_worst,
-                                  check_picks, recompute_pick)
+                                  check_picks, recompute_pick, check_infra)
 
 
 def test_classify_worst_prefers_code():
@@ -108,3 +108,48 @@ def test_recompute_pick_respects_passed_tolerance():
     findings = _mlb_recompute_offline(_MLB_PICK, tolerance=0.30)
     assert findings == [], (
         f"expected no findings at tolerance 0.30, got {findings}")
+
+
+# ── check_infra required-files logic ──
+#
+# check_infra audits two things: the n8n docker container (needs the VPS) and
+# the core pipeline files present in the repo. We scope these tests to the
+# required-files logic by mocking _sh so the docker probe reports the container
+# Up — that leaves only the os.path.exists file checks, which run offline.
+# The required files are pipeline.py / deadman.py / main.py; the obsolete
+# run_afternoon_*.sh / run_audit.sh scripts (deleted in the cron cutover) must
+# NOT produce a finding.
+
+
+def test_check_infra_no_finding_when_core_files_present(tmp_path):
+    """All three core files present -> NO required-files (CODE) finding."""
+    for fname in ("pipeline.py", "deadman.py", "main.py"):
+        (tmp_path / fname).write_text("# stub\n")
+    with mock.patch("shared.audit_checks._sh", return_value=(0, "Up 2 hours")):
+        findings = check_infra(str(tmp_path), "n8n-n8n-1")
+    assert findings == [], f"expected no findings, got {findings}"
+
+
+def test_check_infra_missing_core_file_is_code_finding(tmp_path):
+    """A missing core file (deadman.py) -> a CODE finding naming it."""
+    for fname in ("pipeline.py", "main.py"):   # deadman.py deliberately absent
+        (tmp_path / fname).write_text("# stub\n")
+    with mock.patch("shared.audit_checks._sh", return_value=(0, "Up 2 hours")):
+        findings = check_infra(str(tmp_path), "n8n-n8n-1")
+    code = [f for f in findings if f.kind == CODE]
+    assert len(code) == 1, f"expected exactly one CODE finding, got {findings}"
+    assert "deadman.py" in code[0].text
+
+
+def test_check_infra_deleted_shell_scripts_do_not_flag(tmp_path):
+    """The deleted run_afternoon_*.sh / run_audit.sh scripts must NOT cause a
+    finding even when absent — the stale required-files list was the post-
+    cutover bug that HELD every pipeline email."""
+    for fname in ("pipeline.py", "deadman.py", "main.py"):
+        (tmp_path / fname).write_text("# stub\n")
+    # the obsolete shell scripts are NOT created — they no longer exist
+    with mock.patch("shared.audit_checks._sh", return_value=(0, "Up 2 hours")):
+        findings = check_infra(str(tmp_path), "n8n-n8n-1")
+    assert not any(
+        ".sh" in f.text for f in findings), (
+        f"deleted shell scripts must not be flagged, got {findings}")

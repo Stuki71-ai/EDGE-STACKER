@@ -141,10 +141,11 @@ def check_code_parity(repo):
 # check_infra — ported from audit.py phase1_infra (n8n + scripts)
 # ════════════════════════════════════════════════════════════
 def check_infra(repo, n8n_container):
-    """Audit infra: n8n container up + required scripts present.
+    """Audit infra: n8n container up + core pipeline files present.
 
     n8n down -> INFRA (mechanically auto-fixable).
-    Missing script / pipeline.py -> CODE (a deploy is broken, not auto-fixable).
+    Missing core file (pipeline.py/deadman.py/main.py) -> CODE (a deploy is
+    broken, not auto-fixable).
     """
     out = []
 
@@ -155,9 +156,10 @@ def check_infra(repo, n8n_container):
         out.append(Finding(INFRA, f"n8n container '{n8n_container}' is not "
                                   f"Up (status: {status or 'not found'})"))
 
-    # required scripts + pipeline.py present
-    for fname in ("run_afternoon_nhl.sh", "run_afternoon_mlb.sh",
-                  "run_audit.sh", "pipeline.py"):
+    # core pipeline files present — these are what the current VPS-native
+    # pipeline needs to function (the obsolete run_afternoon_*.sh / run_audit.sh
+    # shell scripts were deleted in the cron cutover and are NOT required).
+    for fname in ("pipeline.py", "deadman.py", "main.py"):
         if not os.path.exists(os.path.join(repo, fname)):
             out.append(Finding(CODE, f"Missing required file: {fname}"))
 
