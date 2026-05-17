@@ -14,7 +14,7 @@ import os
 import re
 import subprocess
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import requests
 
@@ -217,7 +217,6 @@ def check_data_fetch(module):
             venues = {t.get("venue", {}).get("name", "")
                       for t in r.json().get("teams", [])
                       if t.get("venue", {}).get("name")}
-            from shared import mlb_data  # noqa: F401 — locate repo root
             pf_path = os.path.join(os.path.dirname(os.path.dirname(
                 os.path.abspath(__file__))), "static", "mlb_park_factors.json")
             with open(pf_path) as f:
@@ -259,54 +258,68 @@ def check_picks(module, picks):
         if p.get("module") != module:
             continue
         ref = _pick_ref(p)
-        ctx = p.get("context", {})
-        edge = float(p.get("edge_pct", 0.0))   # decimal (0.12 = 12%)
-        line = ctx.get("line")
+        try:
+            ctx = p.get("context", {})
+            edge = float(p.get("edge_pct", 0.0))   # decimal (0.12 = 12%)
+            line = ctx.get("line")
 
-        # edge within [MIN_EDGE, MAX_EDGE]
-        if not (lo - 1e-6 <= edge <= hi + 1e-6):
-            out.append(Finding(DATA, f"{module} pick edge {edge:.1%} outside "
-                                     f"[{lo:.0%}, {hi:.0%}]", pick_ref=ref))
+            # edge within [MIN_EDGE, MAX_EDGE]
+            if not (lo - 1e-6 <= edge <= hi + 1e-6):
+                out.append(Finding(DATA, f"{module} pick edge {edge:.1%} "
+                                         f"outside [{lo:.0%}, {hi:.0%}]",
+                                   pick_ref=ref))
 
-        # line sanity
-        if line is None:
-            out.append(Finding(DATA, f"{module} pick has no line in context",
+            # line sanity
+            if line is None:
+                out.append(Finding(DATA, f"{module} pick has no line in "
+                                         f"context", pick_ref=ref))
+            elif module == "nhl_sog":
+                ln = float(line)
+                if abs((ln * 2) - round(ln * 2)) > 1e-6:
+                    out.append(Finding(DATA, f"NHL pick line {line} is not a "
+                                             f"half-point value",
+                                       pick_ref=ref))
+            elif module == "mlb_f5":
+                ln = float(line)
+                if not (3.0 <= ln <= 6.5):
+                    out.append(Finding(DATA, f"MLB F5 line {line} outside "
+                                             f"typical 3.0-6.5 range",
+                                       pick_ref=ref))
+
+            # 8h tipoff window — game_time must not already be in the past
+            # and must be within 8h of now (the runner enforces this;
+            # re-verify here).
+            gt_iso = ctx.get("game_date", "")
+            gt_str = p.get("game_time", "")
+            if gt_iso and gt_str:
+                dt = _parse_game_dt(gt_iso, gt_str)
+                if dt is not None:
+                    hours = (dt - datetime.now(timezone.utc)
+                             ).total_seconds() / 3600.0
+                    if hours < -0.5:
+                        out.append(Finding(DATA, f"{module} pick game already "
+                                                 f"started ({hours:.1f}h ago)",
+                                           pick_ref=ref))
+                    elif hours > 8.0:
+                        out.append(Finding(DATA, f"{module} pick game "
+                                                 f"{hours:.1f}h out — beyond "
+                                                 f"8h window", pick_ref=ref))
+
+            # postponed-game guard (mlb_f5): re-check live schedule status
+            if module == "mlb_f5":
+                status = _mlb_game_status(p)
+                if status and any(bad in status for bad in
+                                  ("Postponed", "Cancel", "Suspend")):
+                    out.append(Finding(DATA, f"MLB pick game status "
+                                             f"'{status}' — "
+                                             f"postponed/cancelled",
+                                       pick_ref=ref))
+        except Exception as e:
+            # One malformed pick is itself a DATA finding (pipeline drops it);
+            # the remaining picks are still checked.
+            out.append(Finding(DATA, f"{module} pick unprocessable: {e}",
                                pick_ref=ref))
-        elif module == "nhl_sog":
-            ln = float(line)
-            if abs((ln * 2) - round(ln * 2)) > 1e-6:
-                out.append(Finding(DATA, f"NHL pick line {line} is not a "
-                                         f"half-point value", pick_ref=ref))
-        elif module == "mlb_f5":
-            ln = float(line)
-            if not (3.0 <= ln <= 6.5):
-                out.append(Finding(DATA, f"MLB F5 line {line} outside typical "
-                                         f"3.0-6.5 range", pick_ref=ref))
-
-        # 8h tipoff window — game_time must not already be in the past and
-        # must be within 8h of now (the runner enforces this; re-verify here).
-        gt_iso = ctx.get("game_date", "")
-        gt_str = p.get("game_time", "")
-        if gt_iso and gt_str:
-            dt = _parse_game_dt(gt_iso, gt_str)
-            if dt is not None:
-                hours = (dt - datetime.now(timezone.utc)).total_seconds() / 3600.0
-                if hours < -0.5:
-                    out.append(Finding(DATA, f"{module} pick game already "
-                                             f"started ({hours:.1f}h ago)",
-                                       pick_ref=ref))
-                elif hours > 8.0:
-                    out.append(Finding(DATA, f"{module} pick game {hours:.1f}h "
-                                             f"out — beyond 8h window",
-                                       pick_ref=ref))
-
-        # postponed-game guard (mlb_f5): re-check live schedule status
-        if module == "mlb_f5":
-            status = _mlb_game_status(p)
-            if status and any(bad in status for bad in
-                              ("Postponed", "Cancel", "Suspend")):
-                out.append(Finding(DATA, f"MLB pick game status '{status}' — "
-                                         f"postponed/cancelled", pick_ref=ref))
+            continue
 
     return out
 
@@ -326,7 +339,7 @@ def _parse_game_dt(date_iso, time_str):
             hour += 12
         minute = int(m.group(2))
         d = datetime.fromisoformat(date_iso)
-        et = timezone(__import__("datetime").timedelta(hours=-4))
+        et = timezone(timedelta(hours=-4))
         return d.replace(hour=hour, minute=minute, tzinfo=et).astimezone(
             timezone.utc)
     except (ValueError, TypeError):
@@ -362,7 +375,7 @@ RECOMPUTE_TOLERANCE = 0.03
 
 
 def recompute_pick(module, pick):
-    """Recompute the first pick end-to-end from raw upstream data.
+    """Recompute one pick end-to-end from raw upstream data.
 
     Mismatch beyond RECOMPUTE_TOLERANCE -> CODE (formula bug), unless the
     cause is a pick-specific bad upstream value -> DATA with pick_ref.
