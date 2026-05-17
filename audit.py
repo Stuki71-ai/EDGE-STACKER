@@ -3,24 +3,31 @@
 
 Mechanical, deterministic audit of the last completed NHL + MLB F5 fires.
 
-Behaviour (per user spec):
-  - Auto-fixes INFRA issues itself (chmod a script, restart n8n, re-fire a
-    workflow whose webhook never landed). These are silent — no ntfy.
-  - ntfy's topic 'Stuki71-Findings' ONLY when a finding needs the user's
-    decision/approval (code-level bug, data anomaly, or an auto-fix that
-    FAILED). Clean run or successfully auto-fixed infra => no ntfy.
-  - Full detail always written to logs/audit.log.
+This is the ad-hoc CLI audit. The CHECK LOGIC (spec-constant parity, infra
+verification, data-fetch verification, per-pick sanity, one-pick recompute)
+lives in ONE place — shared/audit_checks.py — and is shared with pipeline.py.
+audit.py delegates to it and keeps only its own distinct responsibilities:
+
+  - locating the last completed fire by scraping the VPS logs,
+  - extracting that fire's picks out of the log text,
+  - auto-fixing INFRA issues itself (chmod a script, restart n8n, re-fire a
+    workflow whose webhook never landed) — silent, no ntfy,
+  - ntfy'ing topic 'Stuki71-Findings' ONLY when something needs the user's
+    decision (a CODE/DATA finding, or an auto-fix that FAILED).
+
+Finding-kind -> outcome mapping (the bridge to audit_checks):
+  INFRA  -> mechanically auto-fixable; audit.py attempts the fix and reports
+            AUTOFIXED on success, DECISION on failure.
+  CODE / DATA  -> always DECISION (needs the user's approval).
 
 Run from /root/edge-stacker with the venv active (see run_audit.sh).
 """
 
-import json
 import logging
 import os
 import re
 import subprocess
 import sys
-from datetime import datetime, timezone, timedelta
 from glob import glob
 
 import requests
@@ -31,6 +38,9 @@ NTFY_URL = "https://ntfy.sh/Stuki71-Findings"
 N8N_CONTAINER = "n8n-n8n-1"
 NHL_WEBHOOK = "https://vmi3157940.contaboserver.net/webhook/edge-stacker-nhl"
 MLB_WEBHOOK = "https://vmi3157940.contaboserver.net/webhook/edge-stacker-mlb"
+
+sys.path.insert(0, REPO)
+from shared import audit_checks  # noqa: E402
 
 # ── audit logger ──
 logger = logging.getLogger("edge_stacker_audit")
@@ -67,87 +77,24 @@ def sh(cmd):
         return 1, str(e)
 
 
-# ════════════════════════════════════════════════════════════
-# Spec constant table — any deviation = DECISION
-# ════════════════════════════════════════════════════════════
-SPEC_CONSTANTS = {
-    "modules/nhl_sog/filters.py": {
-        "MIN_EDGE": "0.10", "MAX_VIG": "0.08", "MAX_EDGE": "0.20",
-        "MIN_GAMES": "10", "MIN_TOI_FORWARD_SEC": "14 * 60",
-        "MIN_TOI_DEFENSE_SEC": "18 * 60",
-    },
-    "modules/nhl_sog/projections.py": {
-        "EWMA_DECAY": "0.85", "LEAGUE_AVG_SHOTS_AGAINST": "30.0",
-    },
-    "modules/mlb_f5/filters.py": {
-        "MIN_EDGE": "0.10", "MAX_VIG": "0.08", "MAX_EDGE": "0.25",
-        "LINE_SANITY_PCT": "0.25",
-    },
-    "modules/mlb_f5/projections.py": {
-        "LEAGUE_AVG_WOBA": "0.320", "LEAGUE_AVG_FIP": "4.10",
-    },
-}
+def _report(check_findings):
+    """Bridge: turn audit_checks Finding objects into AUTOFIXED/DECISION items.
+
+    CODE / DATA findings always need the user's decision. INFRA findings are
+    handled by the dedicated auto-fix paths (phase1_infra), so any INFRA
+    finding reaching here unfixed is also surfaced as a DECISION."""
+    for f in check_findings:
+        decision(f.text if not f.pick_ref else f"[{f.pick_ref}] {f.text}")
+    return check_findings
 
 
 def phase0_code_parity():
     logger.info("=== PHASE 0 — code parity ===")
-    # 0.1 git diff HEAD on tracked module/shared code
-    rc, out = sh(f"cd {REPO} && git diff HEAD -- modules/ shared/ staking.py config.py")
-    if out.strip():
-        decision(f"VPS code diverges from git HEAD (uncommitted changes):\n{out[:600]}")
-    else:
-        ok("git diff HEAD clean — VPS code == committed code")
-
     rc, head = sh(f"cd {REPO} && git log -1 --oneline")
     ok(f"VPS HEAD: {head}")
-
-    # 0.4 constants vs spec table
-    for relpath, consts in SPEC_CONSTANTS.items():
-        fpath = os.path.join(REPO, relpath)
-        try:
-            with open(fpath) as f:
-                src = f.read()
-        except Exception as e:
-            decision(f"Cannot read {relpath} for constant check: {e}")
-            continue
-        for name, expected in consts.items():
-            m = re.search(rf"^{name}\s*=\s*([^\n#]+)", src, re.MULTILINE)
-            if not m:
-                decision(f"Constant {name} not found in {relpath}")
-                continue
-            actual = m.group(1).strip()
-            if actual != expected:
-                decision(f"Constant drift: {relpath}:{name} = {actual} (spec: {expected})")
-    ok("constants checked against spec table")
-
-    # MAX_HOURS_AHEAD == 8 in both runners
-    for relpath in ("modules/nhl_sog/runner.py", "modules/mlb_f5/runner.py"):
-        fpath = os.path.join(REPO, relpath)
-        try:
-            with open(fpath) as f:
-                src = f.read()
-        except Exception:
-            decision(f"Cannot read {relpath}")
-            continue
-        # match both the module-level and the indented (in-function) occurrence
-        m = re.search(r"^\s*MAX_HOURS_AHEAD\s*=\s*(\d+)", src, re.MULTILINE)
-        if not m or m.group(1) != "8":
-            decision(f"{relpath}: MAX_HOURS_AHEAD != 8")
-    ok("MAX_HOURS_AHEAD == 8 in both runners")
-
-    # 0.6 forbidden patterns — true unfinished-work markers only.
-    # NOT "placeholder" / "return 30.0": both appear in legitimate comments and
-    # the documented league-avg fallback. The real placeholder check is the live
-    # data fetch in phase15_data (counts teams that actually fell back to 30.0).
-    rc, out = sh(
-        f"grep -rnwE 'TODO|FIXME|XXX|HACK|mock|stub' "
-        f"{REPO}/modules/nhl_sog {REPO}/modules/mlb_f5 "
-        f"{REPO}/shared/espn_nhl.py {REPO}/shared/mlb_data.py {REPO}/shared/odds_client.py"
-    )
-    if out.strip():
-        decision(f"Forbidden patterns found:\n{out[:500]}")
-    else:
-        ok("forbidden-pattern scan clean")
+    cf = _report(audit_checks.check_code_parity(REPO))
+    if not cf:
+        ok("code parity clean — git HEAD, spec constants, forbidden-pattern scan")
 
 
 def _latest_nhl_log():
@@ -183,14 +130,50 @@ def _last_run_block(module_token):
     return "".join(block)
 
 
-def _last_mlb_block():
-    """Return the last mlb_f5 run block text from cron.log, or ''."""
-    return _last_run_block("mlb_f5")
+# ════════════════════════════════════════════════════════════
+# Log-scraping -> pick dicts (audit.py's own responsibility).
+# audit_checks.check_picks / recompute_pick consume the picks-JSON dict shape
+# main.py emits (top-level edge_pct / matchup / game_time, nested context).
+# The ad-hoc audit only has the fire's LOG TEXT, so it reconstructs the
+# minimal subset of that shape the check functions actually read.
+# ════════════════════════════════════════════════════════════
+def _scrape_nhl_picks(txt):
+    """Reconstruct nhl_sog pick dicts from per-day log text."""
+    picks = []
+    for player, direction, line, edge in re.findall(
+            r"NHL PICK: (.+?) (OVER|UNDER) ([\d.]+) SOG \| edge=([\d.]+)%", txt):
+        picks.append({
+            "module": "nhl_sog",
+            "matchup": "",
+            "pick_description": f"{player.strip()} {direction} {line} SOG",
+            "edge_pct": float(edge) / 100.0,
+            "game_time": "",
+            "context": {"player": player.strip(), "line": float(line)},
+        })
+    return picks
 
 
-def _last_nhl_block():
-    """Return the last nhl_sog run block text from cron.log, or ''."""
-    return _last_run_block("nhl_sog")
+def _scrape_mlb_picks(block):
+    """Reconstruct mlb_f5 pick dicts from the cron.log run block."""
+    run_date = re.search(r"EDGE STACKER run: (\d{4}-\d{2}-\d{2})", block)
+    game_date = run_date.group(1) if run_date else ""
+    picks = []
+    for matchup, direction, line, proj, edge in re.findall(
+            r"MLB PICK: (.+?) F5 (OVER|UNDER) ([\d.]+) \| proj=([\d.]+) \| edge=([\d.]+)%",
+            block):
+        picks.append({
+            "module": "mlb_f5",
+            "matchup": matchup.strip(),
+            "pick_description": f"F5 {direction} {line}",
+            "edge_pct": float(edge) / 100.0,
+            "game_time": "",
+            "context": {
+                "line": float(line),
+                "projection": float(proj),
+                "game_date": game_date,
+            },
+        })
+    return picks
 
 
 def phase1_infra():
@@ -232,12 +215,11 @@ def phase1_infra():
         ok(f"NHL log: {os.path.basename(nhl_log)}")
         with open(nhl_log, errors="replace") as f:
             txt = f.read()
-        nhl_picks = re.findall(
-            r"NHL PICK: (.+?) (OVER|UNDER) ([\d.]+) SOG \| edge=([\d.]+)%", txt)
+        nhl_picks = _scrape_nhl_picks(txt)
         n_qual = re.search(r"nhl_sog: (\d+) qualifying picks", txt)
         # The webhook confirmation ('Workflow was started', emitted by curl) is
         # written to cron.log, never to the per-day edge-stacker-*.log file.
-        nhl_block = _last_nhl_block()
+        nhl_block = _last_run_block("nhl_sog")
         started = "Workflow was started" in nhl_block
         if n_qual:
             ok(f"NHL: {n_qual.group(1)} qualifying picks, {len(nhl_picks)} PICK lines")
@@ -248,15 +230,13 @@ def phase1_infra():
             ok("NHL webhook accepted (Workflow was started)")
 
     # MLB fire block
-    mlb_block = _last_mlb_block()
+    mlb_block = _last_run_block("mlb_f5")
     mlb_picks = []
     if not mlb_block:
         _refire("mlb_f5", MLB_WEBHOOK, reason="no MLB fire block in cron.log")
     else:
         ok("MLB fire block located in cron.log")
-        mlb_picks = re.findall(
-            r"MLB PICK: (.+?) F5 (OVER|UNDER) ([\d.]+) \| proj=([\d.]+) \| edge=([\d.]+)%",
-            mlb_block)
+        mlb_picks = _scrape_mlb_picks(mlb_block)
         n_qual = re.search(r"mlb_f5: (\d+) qualifying picks", mlb_block)
         started = "Workflow was started" in mlb_block
         if n_qual:
@@ -296,148 +276,34 @@ def _refire(module, webhook, reason):
 
 def phase15_data():
     logger.info("=== PHASE 1.5 — data-fetch verification ===")
-    sys.path.insert(0, REPO)
-
-    # NHL SA
-    try:
-        from shared import espn_nhl
-        sa = espn_nhl.get_team_defensive_stats()
-        vals = sorted(sa.values())
-        n = len(sa)
-        placeholders = sum(1 for x in vals if x == 30.0)
-        if n != 32:
-            decision(f"NHL SA: expected 32 teams, got {n}")
-        elif placeholders > 0:
-            decision(f"NHL SA: {placeholders} teams fell back to 30.0 placeholder — parser broken")
-        elif not (18.0 <= vals[0] <= 26.0 and 30.0 <= vals[-1] <= 40.0):
-            decision(f"NHL SA: range implausible {vals[0]:.1f}-{vals[-1]:.1f}")
-        else:
-            ok(f"NHL SA: 32 teams, 0 placeholders, range {vals[0]:.1f}-{vals[-1]:.1f}")
-    except Exception as e:
-        decision(f"NHL SA fetch raised: {e}")
-
-    # MLB FIP constant
-    try:
-        from shared import mlb_data
-        fip = mlb_data.fip_constant(datetime.now(timezone.utc).year)
-        if not (2.8 <= fip <= 3.5):
-            decision(f"MLB FIP constant {fip} outside plausible 2.8-3.5 range")
-        else:
-            ok(f"MLB FIP constant: {fip}")
-    except Exception as e:
-        decision(f"MLB FIP constant fetch raised: {e}")
-
-    # MLB park-factor coverage — every venue the MLB Stats API serves MUST have a
-    # key in static/mlb_park_factors.json. A miss = silent 1.00 fallback, which
-    # corrupts every home F5 total for that team (renamed/relocated parks drift).
-    try:
-        year = datetime.now(timezone.utc).year
-        r = requests.get(
-            f"https://statsapi.mlb.com/api/v1/teams?sportId=1&season={year}", timeout=20)
-        r.raise_for_status()
-        venues = {t.get("venue", {}).get("name", "")
-                  for t in r.json().get("teams", []) if t.get("venue", {}).get("name")}
-        with open(os.path.join(REPO, "static", "mlb_park_factors.json")) as f:
-            pf = json.load(f)
-        missing = sorted(v for v in venues if v not in pf)
-        if missing:
-            decision(f"MLB park factors: {len(missing)} venue(s) have NO entry — "
-                     f"silent 1.00 fallback corrupts those teams' home games: {missing}")
-        else:
-            ok(f"MLB park factors: all {len(venues)} active venues covered")
-    except Exception as e:
-        decision(f"MLB park-factor coverage check raised: {e}")
+    cf = _report(audit_checks.check_data_fetch("nhl_sog"))
+    cf += _report(audit_checks.check_data_fetch("mlb_f5"))
+    if not cf:
+        ok("data-fetch verification clean — NHL SA, MLB FIP, MLB park factors")
 
 
 def phase2_pick_sanity(nhl_picks, mlb_picks):
     logger.info("=== PHASE 2 — pick sanity ===")
-    for player, direction, line, edge in nhl_picks:
-        e = float(edge) / 100.0
-        ln = float(line)
-        if not (0.10 <= e <= 0.20 + 1e-6):
-            decision(f"NHL pick '{player} {direction} {line}': edge {edge}% outside [10%, 20%]")
-        if abs((ln * 2) - round(ln * 2)) > 1e-6:
-            decision(f"NHL pick '{player}': line {line} is not a half-point value")
-    ok(f"NHL pick sanity checked ({len(nhl_picks)} picks)")
-
-    for matchup, direction, line, proj, edge in mlb_picks:
-        e = float(edge) / 100.0
-        ln = float(line)
-        if not (0.10 <= e <= 0.25 + 1e-6):
-            decision(f"MLB pick '{matchup} {direction} {line}': edge {edge}% outside [10%, 25%]")
-        if not (3.0 <= ln <= 6.5):
-            decision(f"MLB pick '{matchup}': F5 line {line} outside typical 3.0-6.5 range")
-    ok(f"MLB pick sanity checked ({len(mlb_picks)} picks)")
+    nf = _report(audit_checks.check_picks("nhl_sog", nhl_picks))
+    if not nf:
+        ok(f"NHL pick sanity clean ({len(nhl_picks)} picks)")
+    mf = _report(audit_checks.check_picks("mlb_f5", mlb_picks))
+    if not mf:
+        ok(f"MLB pick sanity clean ({len(mlb_picks)} picks)")
 
 
-def phase25_recompute(nhl_picks, mlb_picks, mlb_block):
-    """Recompute one pick per module numerically; gross mismatch = DECISION."""
+def phase25_recompute(nhl_picks, mlb_picks):
+    """Recompute one pick per module via audit_checks — gross mismatch
+    surfaces as a DECISION."""
     logger.info("=== PHASE 2.5 — pick recompute ===")
-    sys.path.insert(0, REPO)
-
-    # NHL: recompute first pick's projection vs league-avg opponent (sanity range)
     if nhl_picks:
-        player, direction, line, edge = nhl_picks[0]
-        try:
-            from shared import espn_nhl
-            from modules.nhl_sog import projections as nhl_proj
-            eid = espn_nhl.find_espn_player_id(player.strip())
-            if not eid:
-                decision(f"NHL recompute: player '{player}' not resolvable in roster cache")
-            else:
-                games = espn_nhl.get_player_gamelog(eid, last_n=None)
-                pr = nhl_proj.project_player_sog(games, nhl_proj.LEAGUE_AVG_SHOTS_AGAINST)
-                if not pr:
-                    decision(f"NHL recompute: projection returned None for {player}")
-                else:
-                    p = pr["projection"]
-                    # vs-league-avg projection should be within a sane band of the line
-                    if not (0.3 <= p <= 8.0):
-                        decision(f"NHL recompute: {player} projection {p} implausible")
-                    else:
-                        ok(f"NHL recompute: {player} proj {p:.2f} (vs league-avg opp) — plausible")
-        except Exception as e:
-            decision(f"NHL recompute raised: {e}")
-
-    # MLB: recompute first pick's projected total, compare to logged proj
+        rf = _report(audit_checks.recompute_pick("nhl_sog", nhl_picks[0]))
+        if not rf:
+            ok(f"NHL recompute clean ({nhl_picks[0]['context']['player']})")
     if mlb_picks:
-        matchup, direction, line, logged_proj, edge = mlb_picks[0]
-        try:
-            from shared import mlb_data
-            from modules.mlb_f5 import projections as mlb_proj
-            run_date = re.search(r"EDGE STACKER run: (\d{4}-\d{2}-\d{2})", mlb_block)
-            fire_date = run_date.group(1) if run_date else datetime.now(timezone.utc).date().isoformat()
-            sched = {(g["away_team"], g["home_team"]): g
-                     for g in mlb_data.get_schedule(fire_date)}
-            away, home = [s.strip() for s in matchup.split("@")]
-            g = sched.get((away, home))
-            if not g:
-                decision(f"MLB recompute: matchup '{matchup}' not in schedule for {fire_date}")
-            else:
-                ap = mlb_data.get_pitcher_stats(g["away_starter_id"])
-                hp = mlb_data.get_pitcher_stats(g["home_starter_id"])
-                if not ap or not hp:
-                    decision(f"MLB recompute: starter stats unavailable for {matchup}")
-                else:
-                    aw = mlb_data.get_team_woba_vs_hand(g["away_team_id"], hp["hand"])
-                    hw = mlb_data.get_team_woba_vs_hand(g["home_team_id"], ap["hand"])
-                    pf = mlb_data.park_factor(g["venue"])
-                    recomp = mlb_proj.project_total_f5(
-                        hp["xFIP_30d"], aw, ap["xFIP_30d"], hw, pf, 1.0)
-                    lp = float(logged_proj)
-                    drift = abs(recomp - lp) / lp if lp else 1.0
-                    # The audit runs the day AFTER the fire, so MLB Stats API
-                    # data has shifted (new game logs, updated wOBA splits).
-                    # Benign next-day drift routinely reaches ~25%; a genuine
-                    # formula bug blows far past 30%. Threshold set accordingly.
-                    if drift > 0.30:
-                        decision(f"MLB recompute: {matchup} logged proj {lp} vs recomputed "
-                                 f"{recomp:.2f} - {drift:.0%} drift > 30%")
-                    else:
-                        ok(f"MLB recompute: {matchup} logged {lp} vs recomputed "
-                           f"{recomp:.2f} ({drift:.0%} drift) - within tolerance")
-        except Exception as e:
-            decision(f"MLB recompute raised: {e}")
+        rf = _report(audit_checks.recompute_pick("mlb_f5", mlb_picks[0]))
+        if not rf:
+            ok(f"MLB recompute clean ({mlb_picks[0]['matchup']})")
 
 
 def send_ntfy(decision_items):
@@ -468,7 +334,7 @@ def main():
         nhl_log, nhl_picks, mlb_block, mlb_picks = phase1_infra()
         phase15_data()
         phase2_pick_sanity(nhl_picks, mlb_picks)
-        phase25_recompute(nhl_picks, mlb_picks, mlb_block)
+        phase25_recompute(nhl_picks, mlb_picks)
     except Exception as e:
         decision(f"Audit script itself raised an unhandled exception: {e}")
 
