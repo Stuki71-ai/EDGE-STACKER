@@ -30,10 +30,11 @@ def test_clean_first_pass_sends():
     result = {"picks": [_nhl_pick("Pastrnak")]}
     with mock.patch("pipeline.generate", return_value=result) as gen, \
          mock.patch("pipeline.run_full_audit", return_value=[]) as aud:
-        outcome, res, findings = pipeline.heal_loop("nhl_sog")
+        outcome, res, findings, autofixes = pipeline.heal_loop("nhl_sog")
     assert outcome == "SEND"
     assert res == result
     assert findings == []
+    assert autofixes == []          # nothing healed on a clean first pass
     assert gen.call_count == 1
     assert aud.call_count == 1
 
@@ -44,7 +45,7 @@ def test_code_finding_holds():
     code = [Finding(CODE, "Constant drift: MIN_EDGE")]
     with mock.patch("pipeline.generate", return_value=result), \
          mock.patch("pipeline.run_full_audit", return_value=code) as aud:
-        outcome, res, findings = pipeline.heal_loop("nhl_sog")
+        outcome, res, findings, autofixes = pipeline.heal_loop("nhl_sog")
     assert outcome == "HELD"
     assert findings == code
     # CODE is terminal: audited once, no second pass.
@@ -62,7 +63,7 @@ def test_data_finding_drops_pick_then_sends():
     audits = [[Finding(DATA, "edge out of range", pick_ref=bad_ref)], []]
     with mock.patch("pipeline.generate", return_value=result), \
          mock.patch("pipeline.run_full_audit", side_effect=audits) as aud:
-        outcome, res, findings = pipeline.heal_loop("nhl_sog")
+        outcome, res, findings, autofixes = pipeline.heal_loop("nhl_sog")
 
     assert outcome == "SEND"
     assert findings == []
@@ -74,6 +75,8 @@ def test_data_finding_drops_pick_then_sends():
     # drop_picks matched via the real _pick_ref (the 2nd audit saw the
     # trimmed result), so two audits ran.
     assert aud.call_count == 2
+    # the dropped pick is recorded as a self-heal action
+    assert autofixes == [f"dropped pick: {bad_ref}"]
 
 
 def test_drop_picks_matches_via_real_pick_ref():
@@ -97,9 +100,11 @@ def test_infra_finding_autofix_then_sends():
     with mock.patch("pipeline.generate", return_value=result) as gen, \
          mock.patch("pipeline.run_full_audit", side_effect=audits) as aud, \
          mock.patch("pipeline.autofix_infra", return_value=True) as fix:
-        outcome, res, findings = pipeline.heal_loop("nhl_sog")
+        outcome, res, findings, autofixes = pipeline.heal_loop("nhl_sog")
     assert outcome == "SEND"
     assert findings == []
+    # the infra fix is recorded so main() can ntfy a transparency note
+    assert len(autofixes) == 1 and "infra fix" in autofixes[0]
     fix.assert_called_once()
     # attempt 1 (fix) + attempt 2 (clean) -> two generate/audit cycles
     assert gen.call_count == 2
@@ -112,7 +117,7 @@ def test_infra_finding_autofix_fails_holds():
     with mock.patch("pipeline.generate", return_value=result), \
          mock.patch("pipeline.run_full_audit", return_value=infra), \
          mock.patch("pipeline.autofix_infra", return_value=False):
-        outcome, res, findings = pipeline.heal_loop("nhl_sog")
+        outcome, res, findings, autofixes = pipeline.heal_loop("nhl_sog")
     assert outcome == "HELD"
     assert findings == infra
 
@@ -126,7 +131,7 @@ def test_never_clean_holds_after_max_attempts():
     with mock.patch("pipeline.generate", return_value=result) as gen, \
          mock.patch("pipeline.run_full_audit", return_value=infra) as aud, \
          mock.patch("pipeline.autofix_infra", return_value=True):
-        outcome, res, findings = pipeline.heal_loop("nhl_sog")
+        outcome, res, findings, autofixes = pipeline.heal_loop("nhl_sog")
     assert outcome == "HELD"
     assert findings == infra
     assert gen.call_count == pipeline.MAX_ATTEMPTS

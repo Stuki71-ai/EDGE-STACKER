@@ -5,7 +5,8 @@ generate -> audit -> self-heal infra/data -> iterate -> sync -> send.
 Holds the email (ntfy only) on any code/design bug or unresolved finding.
 See docs/plans/2026-05-17-self-healing-pipeline-design.md
 """
-import argparse, json, logging, os, subprocess, sys
+import argparse, json, logging, os, subprocess, sys, traceback
+from datetime import datetime, timezone
 from pathlib import Path
 
 REPO = "/root/edge-stacker"
@@ -125,30 +126,115 @@ def drop_picks(result, pick_refs):
 
 def heal_loop(module):
     """generate -> audit -> self-heal infra/data -> iterate.
-    Returns (outcome, result, findings) with outcome in {'SEND','HELD'}."""
+
+    Returns (outcome, result, findings, autofixes):
+      outcome   — 'SEND' | 'HELD'
+      result    — the (possibly pick-trimmed) picks JSON
+      findings  — the findings that caused a HOLD ([] on SEND)
+      autofixes — list[str] of self-heal actions taken this run (infra restarts,
+                  dropped picks). Empty when nothing was healed. main() uses it
+                  to decide whether a transparency ntfy is warranted on SEND."""
     from shared import audit_checks as ac
+    autofixes = []
     attempt = 1
     while attempt <= MAX_ATTEMPTS:
         result = generate(module)
         findings = run_full_audit(module, result)
         worst = ac.classify_worst(findings)
         if worst is None:
-            return "SEND", result, []
+            return "SEND", result, [], autofixes
         if worst == ac.CODE:
-            return "HELD", result, findings
+            return "HELD", result, findings, autofixes
         if worst == ac.DATA:
             refs = {f.pick_ref for f in findings
                     if f.kind == ac.DATA and f.pick_ref}
             result = drop_picks(result, refs)
+            autofixes += [f"dropped pick: {r}" for r in sorted(refs)]
             findings = run_full_audit(module, result)
             if ac.classify_worst(findings) is None:
-                return "SEND", result, []
+                return "SEND", result, [], autofixes
         if worst == ac.INFRA:
             for f in (x for x in findings if x.kind == ac.INFRA):
                 if not autofix_infra(f):
-                    return "HELD", result, findings
+                    return "HELD", result, findings, autofixes
+                autofixes.append(f"infra fix: {f.text}")
         attempt += 1
-    return "HELD", result, findings
+    return "HELD", result, findings, autofixes
+
+
+def ntfy(title, body):
+    """Push a notification to ntfy.sh. Never raises — a failed push is logged,
+    not propagated, so it can't crash the pipeline.
+
+    IMPORTANT: HTTP headers are encoded latin-1 by `requests`. The `Title`
+    header MUST be pure ASCII — a non-ASCII char (em-dash etc.) raises
+    UnicodeEncodeError and the push silently fails. Callers pass ASCII-only
+    titles. The body is UTF-8 encoded and may contain anything."""
+    try:
+        import requests
+        requests.post(NTFY_URL, data=body.encode("utf-8"),
+                      headers={"Title": title, "Priority": "high",
+                               "Tags": "warning"},
+                      timeout=15)
+    except Exception as e:
+        logger.warning(f"ntfy push failed ({title!r}): {e}")
+
+
+def sync():
+    """SAFE parity check of the working tree before a SEND — NOT a git push.
+
+    Deliberate deviation from the plan's 'commit + push auto-fix' sketch:
+    in this design code/design bugs are HELD (never auto-patched) and the
+    only auto-fix (autofix_infra) runs `docker start` — it never edits
+    tracked files. So at SEND time the tree should always be clean. An
+    autonomous cron-driven push to main is a real risk with zero upside,
+    so sync() only verifies and logs: clean -> log and return; unexpectedly
+    dirty -> log a WARNING with the dirty files and return. It never commits
+    or pushes."""
+    try:
+        proc = subprocess.run(["git", "-C", REPO, "status", "--porcelain"],
+                              capture_output=True, text=True, timeout=30)
+    except Exception as e:
+        logger.warning(f"sync: could not run git status: {e}")
+        return
+    dirty = proc.stdout.strip()
+    if not dirty:
+        logger.info("sync: repo clean (working tree matches HEAD)")
+    else:
+        logger.warning("sync: working tree UNEXPECTEDLY DIRTY (not committing, "
+                        f"not pushing) — dirty files:\n{dirty}")
+
+
+def send(module, result):
+    """POST the audited-clean picks JSON to the module's n8n webhook.
+    Raises RuntimeError if the webhook does not acknowledge the trigger."""
+    import requests
+    r = requests.post(WEBHOOK[module], json=result, timeout=30)
+    if "Workflow was started" not in r.text:
+        raise RuntimeError(f"webhook did not accept: {r.text[:200]}")
+
+
+def write_marker(module, outcome):
+    """Write the completion marker the dead-man's-switch (deadman.py) reads.
+    Called in EVERY terminal branch — SEND, HELD, CRASH — so a silent miss
+    is impossible. Guarded so a marker-write failure can't mask the outcome."""
+    try:
+        os.makedirs(MARKER_DIR, exist_ok=True)
+        Path(os.path.join(MARKER_DIR, f"{module}.json")).write_text(
+            json.dumps({"ts": datetime.now(timezone.utc).isoformat(),
+                        "outcome": outcome}))
+    except Exception as e:
+        logger.error(f"write_marker failed (module={module}, "
+                      f"outcome={outcome}): {e}")
+
+
+def _findings_text(findings):
+    """Render a Finding list as a human-readable ntfy body."""
+    lines = []
+    for f in findings:
+        ref = f" [{f.pick_ref}]" if getattr(f, "pick_ref", "") else ""
+        lines.append(f"- {f.kind}: {f.text}{ref}")
+    return "\n".join(lines) if lines else "(no findings detail)"
 
 
 def parse_args(argv=None):
@@ -159,14 +245,61 @@ def parse_args(argv=None):
     return parser.parse_args(argv)
 
 
+def _current_et_hour():
+    """Current hour (0-23) in US Eastern — DST-correct via stdlib zoneinfo."""
+    from zoneinfo import ZoneInfo
+    return datetime.now(ZoneInfo("America/New_York")).hour
+
+
 def main(argv=None):
-    """Skeleton entry point — argparse + logging wiring only.
-    The self-heal loop / SEND / HELD paths are added by later tasks."""
+    """Entry point: DST guard -> self-heal loop -> SEND or HELD.
+
+    The cron fires at two UTC times by design; should_run() lets only the
+    fire landing on the module's target ET hour proceed. The whole body is
+    wrapped in a crash guard that ntfys and writes a CRASH marker."""
     args = parse_args(argv)
     setup_logging()
     load_env()
-    logger.info(f"pipeline start: module={args.module}")
-    # NOTE: loop / audit / send logic is implemented in later tasks.
+    module = args.module
+    logger.info(f"pipeline start: module={module}")
+
+    try:
+        if not should_run(module, _current_et_hour()):
+            logger.info("not the target ET hour, exiting (other cron fire "
+                         "handles this module)")
+            return
+
+        outcome, result, findings, autofixes = heal_loop(module)
+
+        if outcome == "SEND":
+            sync()
+            send(module, result)
+            n_picks = len(result.get("picks", []))
+            if autofixes:
+                ntfy("EDGE STACKER - picks sent after auto-fix",
+                     f"module={module}: email sent ({n_picks} picks). "
+                     "Self-heal actions taken this run:\n"
+                     + "\n".join(f"- {a}" for a in autofixes))
+                logger.info(f"SEND: {n_picks} picks sent; "
+                            f"auto-fixes: {autofixes}")
+            else:
+                logger.info(f"SEND: {n_picks} picks sent; no auto-fix needed")
+            write_marker(module, "SEND")
+        else:  # HELD
+            body = (f"module={module}: picks HELD, NO email sent.\n\n"
+                    + _findings_text(findings))
+            ntfy("EDGE STACKER - picks HELD", body)
+            logger.warning(f"HELD: module={module}; "
+                            f"findings:\n{_findings_text(findings)}")
+            write_marker(module, "HELD")
+
+    except Exception as e:
+        tb = traceback.format_exc()
+        logger.error(f"pipeline CRASHED: {e}\n{tb}")
+        ntfy("EDGE STACKER - pipeline CRASHED",
+             f"module={module}: unhandled crash, NO email sent.\n\n"
+             f"{e}\n\n{tb}")
+        write_marker(module, "CRASH")
 
 
 if __name__ == "__main__":
