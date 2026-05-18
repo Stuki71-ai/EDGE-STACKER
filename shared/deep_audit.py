@@ -314,9 +314,12 @@ def deep_audit(module, result, fallback):
             spec = f.read()
         evidence = gather_evidence(module, result)
         verdict = claude_api_audit(spec, evidence)
+        logger.info("deep audit verdict=%s: %s",
+                    verdict["verdict"], verdict["summary"])
         return [ac.Finding(kind=f["kind"], text=f["text"],
                            pick_ref=f["pick_ref"])
                 for f in verdict["findings"]]
-    except Exception:
-        logger.warning("deep audit unavailable — mechanical fallback")
+    except Exception as exc:
+        logger.warning("deep audit unavailable (%s) — mechanical fallback",
+                        exc)
         return fallback(module, result)
