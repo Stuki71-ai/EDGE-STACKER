@@ -52,6 +52,12 @@ AUDIT PRINCIPLES — read every run
 - **Silent fallbacks are bugs.** Placeholders, neutral-value stubs substituted
   for missing data, swallowed exceptions, fallback-to-scoreboard paths — any of
   these corrupting a pick = BUG.
+- **"Roughly" ranges are soft bounds.** Numeric ranges marked "roughly" in the
+  checks below are soft bounds — flag only a clear outlier well outside the
+  range, never a marginal value sitting at or just past the boundary.
+- **Missing evidence section = BUG.** If an evidence-bundle section that a check
+  requires is missing or empty, that check cannot pass — treat it as a BUG
+  (CODE), because the pipeline failed to gather what the audit needs.
 
 ═══════════════════════════════════════════════════
 CHECK 1 — CODE / CONSTANT PARITY
@@ -66,7 +72,9 @@ uncommitted divergence in those paths = possible drift → flag (CODE).
 
 **1.2 — Constant verification (the design contract).** The bundle includes the
 grepped constant values. Every constant must match this table exactly. Any
-deviation = design-drift BUG (CODE).
+deviation = design-drift BUG (CODE). Arithmetic equivalence counts — `14*60`,
+`14 * 60`, and `840` are all the same value regardless of whitespace; only a
+genuinely different number is a deviation.
 
 | Constant | Module | Spec value |
 |---|---|---|
@@ -74,8 +82,8 @@ deviation = design-drift BUG (CODE).
 | MAX_VIG | nhl_sog/filters | 0.08 |
 | MAX_EDGE | nhl_sog/filters | 0.20 |
 | MIN_GAMES | nhl_sog/filters | 10 |
-| MIN_TOI_FORWARD_SEC | nhl_sog/filters | 14*60 |
-| MIN_TOI_DEFENSE_SEC | nhl_sog/filters | 18*60 |
+| MIN_TOI_FORWARD_SEC | nhl_sog/filters | 14*60 (= 840) |
+| MIN_TOI_DEFENSE_SEC | nhl_sog/filters | 18*60 (= 1080) |
 | EWMA_DECAY | nhl_sog/projections | 0.85 |
 | LEAGUE_AVG_SHOTS_AGAINST | nhl_sog/projections | 30.0 |
 | MAX_HOURS_AHEAD | nhl_sog/runner + mlb_f5/runner | 8 |
@@ -244,6 +252,12 @@ Because the pipeline gathers evidence at fire time using the SAME data the
 generation used, the recompute should match tightly — there is no morning-after
 data drift to excuse a discrepancy.
 
+**Recompute tolerance.** Floating-point recompute will differ in low decimals.
+The recomputed projection counts as a MATCH if it is within **2% relative OR
+0.1 absolute of the emitted projection, whichever is larger**. A difference
+beyond that tolerance is the "gross mismatch" above = formula BUG (CODE). This
+single tolerance applies to both the NHL and MLB bullets.
+
 ═══════════════════════════════════════════════════
 OUTPUT CONTRACT — return ONLY this
 ═══════════════════════════════════════════════════
@@ -265,7 +279,10 @@ Rules:
   is BUG it lists every problem found.
 - Each finding's `kind` tells the pipeline how to route it:
   - **`INFRA`** — a mechanically auto-fixable infrastructure issue (e.g. n8n
-    container down). The pipeline self-heals these.
+    container down). The pipeline self-heals these. **You, the Claude judge,
+    never emit an INFRA finding** — you audit a freshly-generated picks result
+    and never see infrastructure state. `INFRA` is reserved for the pipeline's
+    mechanical fallback audit. Emit only `DATA` or `CODE`.
   - **`DATA`** — a problem scoped to one specific pick (a bad line, a phantom
     game, an out-of-window game, a missing starter). The pipeline can drop that
     one pick and re-audit.
