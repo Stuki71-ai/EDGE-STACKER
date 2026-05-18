@@ -414,6 +414,28 @@ def test_deep_audit_bug_maps_findings(monkeypatch):
     assert out[1].pick_ref == "A @ B"
 
 
+def test_deep_audit_bug_with_no_findings_synthesises_hold_finding(monkeypatch):
+    """A BUG verdict with an empty findings list is a money-gate hole: mapping
+    it to [] would read as GREEN and SEND a pick the LLM flagged buggy.
+    deep_audit must instead synthesise exactly one CODE Finding (so heal_loop
+    HOLDs) whose text carries the verdict summary — NOT [], NOT the fallback."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr(deep_audit, "gather_evidence",
+                        lambda module, result: {"module": module})
+    monkeypatch.setattr(deep_audit, "claude_api_audit",
+                        lambda spec, evidence: {
+                            "verdict": "BUG", "findings": [],
+                            "summary": "something is wrong"})
+    fallback = _fallback_factory([Finding(CODE, "mechanical — must not be used")])
+    out = deep_audit.deep_audit("nhl_sog", {"picks": []}, fallback)
+    assert len(out) == 1
+    assert out[0].kind == CODE
+    assert "something is wrong" in out[0].text
+    # the mechanical fallback must NOT be used — it could come back clean
+    # and SEND, contradicting the LLM's BUG verdict.
+    assert fallback.calls == []
+
+
 def test_deep_audit_api_raises_uses_fallback(monkeypatch):
     """claude_api_audit raising (API unreachable) → deep_audit calls the
     passed-in fallback and returns ITS result."""

@@ -1,7 +1,9 @@
 """Tests for pipeline.heal_loop() — the self-heal loop.
 
-pipeline.generate and pipeline.run_full_audit are mocked so the loop logic
-is exercised in isolation (no VPS, no network, no live audit deps).
+pipeline.generate and the audit are mocked so the loop logic is exercised
+in isolation (no VPS, no network, no live audit deps). heal_loop calls
+deep_audit.deep_audit (with pipeline.run_full_audit passed as the fallback),
+so the audit mock is pointed at shared.deep_audit.deep_audit.
 drop_picks is NOT mocked: it runs the real audit_checks._pick_ref, so the
 DATA scenario proves the dropped pick is matched via the genuine ref.
 """
@@ -29,7 +31,7 @@ def _nhl_pick(player, matchup="BOS @ NYR"):
 def test_clean_first_pass_sends():
     result = {"picks": [_nhl_pick("Pastrnak")]}
     with mock.patch("pipeline.generate", return_value=result) as gen, \
-         mock.patch("pipeline.run_full_audit", return_value=[]) as aud:
+         mock.patch("shared.deep_audit.deep_audit", return_value=[]) as aud:
         outcome, res, findings, autofixes = pipeline.heal_loop("nhl_sog")
     assert outcome == "SEND"
     assert res == result
@@ -44,7 +46,7 @@ def test_code_finding_holds():
     result = {"picks": [_nhl_pick("Pastrnak")]}
     code = [Finding(CODE, "Constant drift: MIN_EDGE")]
     with mock.patch("pipeline.generate", return_value=result), \
-         mock.patch("pipeline.run_full_audit", return_value=code) as aud:
+         mock.patch("shared.deep_audit.deep_audit", return_value=code) as aud:
         outcome, res, findings, autofixes = pipeline.heal_loop("nhl_sog")
     assert outcome == "HELD"
     assert findings == code
@@ -62,7 +64,7 @@ def test_data_finding_drops_pick_then_sends():
     # 1st audit flags `bad`; 2nd audit (post-drop) is clean.
     audits = [[Finding(DATA, "edge out of range", pick_ref=bad_ref)], []]
     with mock.patch("pipeline.generate", return_value=result), \
-         mock.patch("pipeline.run_full_audit", side_effect=audits) as aud:
+         mock.patch("shared.deep_audit.deep_audit", side_effect=audits) as aud:
         outcome, res, findings, autofixes = pipeline.heal_loop("nhl_sog")
 
     assert outcome == "SEND"
@@ -98,7 +100,7 @@ def test_infra_finding_autofix_then_sends():
     infra = [Finding(INFRA, "n8n container 'n8n-n8n-1' is not Up")]
     audits = [infra, []]   # attempt 1 flags infra; attempt 2 clean
     with mock.patch("pipeline.generate", return_value=result) as gen, \
-         mock.patch("pipeline.run_full_audit", side_effect=audits) as aud, \
+         mock.patch("shared.deep_audit.deep_audit", side_effect=audits) as aud, \
          mock.patch("pipeline.autofix_infra", return_value=True) as fix:
         outcome, res, findings, autofixes = pipeline.heal_loop("nhl_sog")
     assert outcome == "SEND"
@@ -115,7 +117,7 @@ def test_infra_finding_autofix_fails_holds():
     result = {"picks": [_nhl_pick("Pastrnak")]}
     infra = [Finding(INFRA, "n8n container 'n8n-n8n-1' is not Up")]
     with mock.patch("pipeline.generate", return_value=result), \
-         mock.patch("pipeline.run_full_audit", return_value=infra), \
+         mock.patch("shared.deep_audit.deep_audit", return_value=infra), \
          mock.patch("pipeline.autofix_infra", return_value=False):
         outcome, res, findings, autofixes = pipeline.heal_loop("nhl_sog")
     assert outcome == "HELD"
@@ -129,13 +131,40 @@ def test_never_clean_holds_after_max_attempts():
     # until it exhausts MAX_ATTEMPTS.
     infra = [Finding(INFRA, "n8n container 'n8n-n8n-1' is not Up")]
     with mock.patch("pipeline.generate", return_value=result) as gen, \
-         mock.patch("pipeline.run_full_audit", return_value=infra) as aud, \
+         mock.patch("shared.deep_audit.deep_audit", return_value=infra) as aud, \
          mock.patch("pipeline.autofix_infra", return_value=True):
         outcome, res, findings, autofixes = pipeline.heal_loop("nhl_sog")
     assert outcome == "HELD"
     assert findings == infra
     assert gen.call_count == pipeline.MAX_ATTEMPTS
     assert aud.call_count == pipeline.MAX_ATTEMPTS
+
+
+# ── deep_audit self-falls-back -> heal_loop sees the fallback findings ──
+def test_heal_loop_works_when_deep_audit_returns_fallback_findings():
+    """deep_audit can never raise — it self-falls-back on any failure to the
+    mechanical `fallback(module, result)` and returns ITS findings. Verify
+    heal_loop still behaves correctly when deep_audit hands back exactly what
+    the fallback produced: here the fallback flags a CODE bug, so heal_loop
+    must HELD with those findings."""
+    result = {"picks": [_nhl_pick("Pastrnak")]}
+    code = [Finding(CODE, "mechanical fallback flagged a CODE bug")]
+
+    def deep_audit_delegating_to_fallback(module, res, fallback):
+        # simulate deep_audit's internal self-fallback: it calls the passed-in
+        # fallback and returns its result verbatim.
+        return fallback(module, res)
+
+    with mock.patch("pipeline.generate", return_value=result), \
+         mock.patch("shared.deep_audit.deep_audit",
+                    side_effect=deep_audit_delegating_to_fallback), \
+         mock.patch("pipeline.run_full_audit", return_value=code) as fb:
+        outcome, res, findings, autofixes = pipeline.heal_loop("nhl_sog")
+    assert outcome == "HELD"
+    assert findings == code
+    # heal_loop passed run_full_audit through as the fallback, and deep_audit
+    # invoked it.
+    fb.assert_called_once()
 
 
 # ── Fail-safe: autofix_infra timeout -> failed fix (False) ───────────

@@ -316,9 +316,22 @@ def deep_audit(module, result, fallback):
         verdict = claude_api_audit(spec, evidence)
         logger.info("deep audit verdict=%s: %s",
                     verdict["verdict"], verdict["summary"])
-        return [ac.Finding(kind=f["kind"], text=f["text"],
-                           pick_ref=f["pick_ref"])
-                for f in verdict["findings"]]
+        findings = [ac.Finding(kind=f["kind"], text=f["text"],
+                               pick_ref=f["pick_ref"])
+                    for f in verdict["findings"]]
+        # Money-gate guard: a BUG verdict with no findings would map to [],
+        # which the pipeline reads as GREEN and SENDs — sending a pick the
+        # LLM flagged buggy. JSON-schema can't enforce this cross-field rule,
+        # so synthesise a CODE finding to force a HOLD. The mechanical
+        # fallback is NOT used here: it could come back clean and SEND,
+        # contradicting the LLM's BUG verdict.
+        if verdict["verdict"] == "BUG" and not findings:
+            findings = [ac.Finding(
+                kind=ac.CODE,
+                text="Claude returned a BUG verdict with no findings — "
+                     f"{verdict['summary']}",
+                pick_ref="")]
+        return findings
     except Exception as exc:
         logger.warning("deep audit unavailable (%s) — mechanical fallback",
                         exc)

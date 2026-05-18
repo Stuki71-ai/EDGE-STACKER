@@ -148,11 +148,12 @@ def heal_loop(module):
                   dropped picks). Empty when nothing was healed. main() uses it
                   to decide whether a transparency ntfy is warranted on SEND."""
     from shared import audit_checks as ac
+    from shared import deep_audit
     autofixes = []
     attempt = 1
     while attempt <= MAX_ATTEMPTS:
         result = generate(module)
-        findings = run_full_audit(module, result)
+        findings = deep_audit.deep_audit(module, result, fallback=run_full_audit)
         worst = ac.classify_worst(findings)
         if worst is None:
             return "SEND", result, [], autofixes
@@ -163,7 +164,7 @@ def heal_loop(module):
                     if f.kind == ac.DATA and f.pick_ref}
             result = drop_picks(result, refs)
             autofixes += [f"dropped pick: {r}" for r in sorted(refs)]
-            findings = run_full_audit(module, result)
+            findings = deep_audit.deep_audit(module, result, fallback=run_full_audit)
             if ac.classify_worst(findings) is None:
                 return "SEND", result, [], autofixes
         if worst == ac.INFRA:
