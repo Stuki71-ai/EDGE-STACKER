@@ -183,13 +183,16 @@ class _FakeBlock:
 
 
 class _FakeResponse:
-    def __init__(self, text):
+    def __init__(self, text, stop_reason="end_turn"):
         self.content = [_FakeBlock(text)]
+        self.stop_reason = stop_reason
 
 
 class _FakeMessages:
     """Records every messages.create call; replays a scripted list of
-    side-effects (a str returns a _FakeResponse, an Exception is raised)."""
+    side-effects: a str returns a text _FakeResponse, an Exception is raised,
+    and a _FakeResponse instance is returned verbatim (for non-text / custom
+    stop_reason cases)."""
     def __init__(self, script):
         self._script = list(script)
         self.calls = []
@@ -200,6 +203,8 @@ class _FakeMessages:
         self._script_last = step
         if isinstance(step, Exception):
             raise step
+        if isinstance(step, _FakeResponse):
+            return step
         return _FakeResponse(step)
 
 
@@ -311,3 +316,37 @@ def test_claude_api_audit_raises_on_wrong_shape(monkeypatch):
     _install_fake_client(monkeypatch, [json.dumps({"verdict": "MAYBE"})])
     with pytest.raises(Exception):
         deep_audit.claude_api_audit("SPEC", {"module": "nhl_sog"})
+
+
+def test_claude_api_audit_raises_on_no_text_block(monkeypatch):
+    """A response with no text block (e.g. a refusal with only a thinking
+    block) raises a diagnosable ValueError naming the cause — and does NOT
+    retry, since a refusal is not a transient failure."""
+    refusal = _FakeResponse("", stop_reason="refusal")
+    refusal.content = [_FakeBlock("internal reasoning", type="thinking")]
+    holder = _install_fake_client(monkeypatch, [refusal])
+    with pytest.raises(ValueError) as exc:
+        deep_audit.claude_api_audit("SPEC", {"module": "nhl_sog"})
+    msg = str(exc.value)
+    assert "no text block" in msg and "refusal" in msg
+    assert len(holder["client"].messages.calls) == 1
+
+
+def test_claude_api_audit_raises_on_empty_content(monkeypatch):
+    """A response with an empty content list also raises ValueError."""
+    empty = _FakeResponse("", stop_reason="end_turn")
+    empty.content = []
+    _install_fake_client(monkeypatch, [empty])
+    with pytest.raises(ValueError):
+        deep_audit.claude_api_audit("SPEC", {"module": "nhl_sog"})
+
+
+def test_claude_api_audit_raises_on_max_tokens_truncation(monkeypatch):
+    """A stop_reason=max_tokens truncation raises a diagnosable ValueError
+    before any parsing, and does NOT retry — truncation is not transient."""
+    truncated = _FakeResponse(_GREEN, stop_reason="max_tokens")
+    holder = _install_fake_client(monkeypatch, [truncated])
+    with pytest.raises(ValueError) as exc:
+        deep_audit.claude_api_audit("SPEC", {"module": "nhl_sog"})
+    assert "max_tokens" in str(exc.value)
+    assert len(holder["client"].messages.calls) == 1

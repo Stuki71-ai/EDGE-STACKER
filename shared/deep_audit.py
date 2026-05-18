@@ -266,5 +266,13 @@ def claude_api_audit(spec, evidence):
                 raise
             time.sleep(AUDIT_BACKOFF_BASE ** attempt)
 
-    text = next(b.text for b in response.content if b.type == "text")
+    if response.stop_reason == "max_tokens":
+        raise ValueError("Claude audit response truncated "
+                         "(stop_reason=max_tokens) — evidence bundle or "
+                         "max_tokens needs tuning")
+
+    text = next((b.text for b in response.content if b.type == "text"), None)
+    if text is None:
+        raise ValueError("Claude audit response had no text block; "
+                         f"stop_reason={response.stop_reason}")
     return _parse_verdict(text)
