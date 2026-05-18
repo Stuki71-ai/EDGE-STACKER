@@ -377,6 +377,67 @@ def _mlb_game_status(pick):
 RECOMPUTE_TOLERANCE = 0.03
 
 
+def recompute_value(module, pick):
+    """Independently recompute one pick's projection end-to-end from raw
+    upstream data and return the bare number (float), or None if it cannot
+    be produced (player/matchup unresolvable, stats unavailable, raise).
+
+    This is the same math recompute_pick performs internally, exposed as a
+    value so the deep-audit evidence bundle can carry the recomputed
+    projection alongside the logged one (audit-spec Check 5). recompute_pick
+    keeps its own findings-producing logic; this helper never returns
+    Findings and never raises.
+    """
+    ctx = pick.get("context", {})
+
+    if module == "nhl_sog":
+        try:
+            from shared import espn_nhl
+            from modules.nhl_sog import projections as nhl_proj
+            player = ctx.get("player", "")
+            eid = espn_nhl.find_espn_player_id(player.strip())
+            if not eid:
+                return None
+            games = espn_nhl.get_player_gamelog(eid, last_n=None)
+            pr = nhl_proj.project_player_sog(
+                games, nhl_proj.LEAGUE_AVG_SHOTS_AGAINST)
+            if not pr:
+                return None
+            return pr["projection"]
+        except Exception:
+            return None
+
+    elif module == "mlb_f5":
+        try:
+            from shared import mlb_data
+            from modules.mlb_f5 import projections as mlb_proj
+            matchup = pick.get("matchup", "")
+            if "@" not in matchup:
+                return None
+            fire_date = ctx.get("game_date") or \
+                datetime.now(timezone.utc).date().isoformat()
+            sched = {(g["away_team"], g["home_team"]): g
+                     for g in mlb_data.get_schedule(fire_date)}
+            away, home = [s.strip() for s in matchup.split("@", 1)]
+            g = sched.get((away, home))
+            if not g:
+                return None
+            ap = mlb_data.get_pitcher_stats(g["away_starter_id"])
+            hp = mlb_data.get_pitcher_stats(g["home_starter_id"])
+            if not ap or not hp:
+                return None
+            aw = mlb_data.get_team_woba_vs_hand(g["away_team_id"], hp["hand"])
+            hw = mlb_data.get_team_woba_vs_hand(g["home_team_id"], ap["hand"])
+            pf = mlb_data.park_factor(g["venue"])
+            wf = ctx.get("weather_factor", 1.0)
+            return mlb_proj.project_total_f5(
+                hp["xFIP_30d"], aw, ap["xFIP_30d"], hw, pf, wf)
+        except Exception:
+            return None
+
+    return None
+
+
 def recompute_pick(module, pick, tolerance=RECOMPUTE_TOLERANCE):
     """Recompute one pick end-to-end from raw upstream data.
 

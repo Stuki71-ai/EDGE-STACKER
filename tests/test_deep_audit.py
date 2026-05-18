@@ -119,3 +119,53 @@ def test_collect_runs_offline_with_mocked_externals(monkeypatch):
         in ev["mechanical_findings"]
     # one pick -> one recompute entry
     assert len(ev["recompute"]) == 1
+
+
+def test_collect_recompute_entry_carries_recomputed_value(monkeypatch):
+    """Each recompute entry must carry BOTH the logged/emitted projection
+    AND the independently recomputed projection, so the Claude judge can
+    perform audit-spec Check 5's numeric-tolerance comparison even when the
+    pick is clean (recompute_pick emits no findings)."""
+    from shared import audit_checks as ac
+
+    monkeypatch.setattr(ac, "check_code_parity", lambda repo: [])
+    monkeypatch.setattr(ac, "check_infra", lambda repo, c: [])
+    monkeypatch.setattr(ac, "check_data_fetch", lambda module: [])
+    monkeypatch.setattr(ac, "check_picks", lambda module, picks: [])
+    # clean pick -> recompute_pick emits no findings
+    monkeypatch.setattr(ac, "recompute_pick", lambda module, pick: [])
+    # the recompute helper independently produces a number
+    monkeypatch.setattr(ac, "recompute_value", lambda module, pick: 4.62)
+    monkeypatch.setattr(deep_audit, "_data_fetch_summary",
+                        lambda module: {})
+    monkeypatch.setattr(deep_audit, "_read_fire_log", lambda repo: "")
+
+    pick = {"module": "mlb_f5", "matchup": "A @ B",
+            "pick_description": "Over 4.5", "context": {"projection": 4.5}}
+    ev = deep_audit._collect("mlb_f5", {"picks": [pick]})
+
+    entry = ev["recompute"][0]
+    assert entry["logged_projection"] == 4.5
+    assert entry["recomputed_projection"] == 4.62
+    assert entry["findings"] == []
+
+
+def test_collect_recompute_entry_handles_missing_recompute(monkeypatch):
+    """If the recompute genuinely cannot produce a value, the entry stores
+    None for recomputed_projection rather than crashing."""
+    from shared import audit_checks as ac
+
+    monkeypatch.setattr(ac, "check_code_parity", lambda repo: [])
+    monkeypatch.setattr(ac, "check_infra", lambda repo, c: [])
+    monkeypatch.setattr(ac, "check_data_fetch", lambda module: [])
+    monkeypatch.setattr(ac, "check_picks", lambda module, picks: [])
+    monkeypatch.setattr(ac, "recompute_pick", lambda module, pick: [])
+    monkeypatch.setattr(ac, "recompute_value", lambda module, pick: None)
+    monkeypatch.setattr(deep_audit, "_data_fetch_summary", lambda module: {})
+    monkeypatch.setattr(deep_audit, "_read_fire_log", lambda repo: "")
+
+    pick = {"module": "mlb_f5", "matchup": "A @ B",
+            "pick_description": "Over 4.5", "context": {}}
+    ev = deep_audit._collect("mlb_f5", {"picks": [pick]})
+
+    assert ev["recompute"][0]["recomputed_projection"] is None

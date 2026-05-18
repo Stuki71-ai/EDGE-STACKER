@@ -119,9 +119,14 @@ def _collect(module, result):
     recompute = []
     for p in picks:
         findings = ac.recompute_pick(module, p)
+        # Also capture the bare recomputed projection: recompute_pick's
+        # findings fire ONLY on drift beyond its internal threshold, so a
+        # clean pick yields no number. The Claude judge needs both values
+        # to run audit-spec Check 5's tolerance comparison.
         recompute.append({
             "pick_ref": ac._pick_ref(p),
             "logged_projection": p.get("context", {}).get("projection"),
+            "recomputed_projection": ac.recompute_value(module, p),
             "findings": _serialize_findings(findings),
         })
         mechanical += findings
