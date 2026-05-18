@@ -142,11 +142,12 @@ def test_never_clean_holds_after_max_attempts():
 
 # ── deep_audit self-falls-back -> heal_loop sees the fallback findings ──
 def test_heal_loop_works_when_deep_audit_returns_fallback_findings():
-    """deep_audit can never raise — it self-falls-back on any failure to the
-    mechanical `fallback(module, result)` and returns ITS findings. Verify
-    heal_loop still behaves correctly when deep_audit hands back exactly what
-    the fallback produced: here the fallback flags a CODE bug, so heal_loop
-    must HELD with those findings."""
+    """Verify heal_loop wires run_full_audit through to deep_audit as the
+    `fallback` kwarg and HOLDs on the findings the fallback returns: a
+    hand-written deep_audit delegate simulates self-fallback by invoking the
+    passed-in fallback, which here flags a CODE bug. This proves heal_loop's
+    wiring/handling only — deep_audit's actual self-fallback mechanism is
+    covered by test_deep_audit_api_raises_uses_fallback in tests/test_deep_audit.py."""
     result = {"picks": [_nhl_pick("Pastrnak")]}
     code = [Finding(CODE, "mechanical fallback flagged a CODE bug")]
 

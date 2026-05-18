@@ -85,6 +85,8 @@ def generate(module):
         raise RuntimeError(f"main.py output not valid JSON: {e}")
 
 
+# NOT dead code: reached only as deep_audit's mechanical fallback (passed as the
+# `fallback` kwarg by heal_loop), never called directly here.
 def run_full_audit(module, result):
     """Run every Task-2 check against a fresh in-hand result and concatenate
     the Finding lists. A zero-pick result is legitimate (a 'no picks tonight'
