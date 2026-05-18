@@ -23,7 +23,13 @@ logger = logging.getLogger("edge_stacker_pipeline")
 
 
 def setup_logging():
-    """Log to logs/pipeline.log AND stdout (mirrors audit.py's pattern)."""
+    """Log to logs/pipeline.log via a FileHandler only.
+
+    No StreamHandler: pipeline.py / deadman.py run under cron with stdout
+    redirected back into logs/pipeline.log (`>> logs/pipeline.log 2>&1`), so a
+    StreamHandler would write every line a second time. The cron's `2>&1` still
+    captures any crash that happens before this logging is set up.
+    """
     if logger.handlers:
         return
     logger.setLevel(logging.INFO)
@@ -31,7 +37,6 @@ def setup_logging():
     fh = logging.FileHandler(os.path.join(REPO, "logs", "pipeline.log"))
     fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
     logger.addHandler(fh)
-    logger.addHandler(logging.StreamHandler(sys.stdout))
 
 
 def should_run(module, et_hour):
