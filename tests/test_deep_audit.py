@@ -5,9 +5,12 @@ gather_evidence is a thin wrapper that delegates ALL heavy work (git,
 subprocess, fetchers, recompute, filesystem) to _collect, so tests stub
 _collect and never touch the network or the VPS.
 """
+import json
 import sys
 import os
 from unittest import mock
+
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -169,3 +172,142 @@ def test_collect_recompute_entry_handles_missing_recompute(monkeypatch):
     ev = deep_audit._collect("mlb_f5", {"picks": [pick]})
 
     assert ev["recompute"][0]["recomputed_projection"] is None
+
+
+# --- claude_api_audit (Task 3) -------------------------------------------
+
+class _FakeBlock:
+    def __init__(self, text, type="text"):
+        self.text = text
+        self.type = type
+
+
+class _FakeResponse:
+    def __init__(self, text):
+        self.content = [_FakeBlock(text)]
+
+
+class _FakeMessages:
+    """Records every messages.create call; replays a scripted list of
+    side-effects (a str returns a _FakeResponse, an Exception is raised)."""
+    def __init__(self, script):
+        self._script = list(script)
+        self.calls = []
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        step = self._script.pop(0) if self._script else self._script_last
+        self._script_last = step
+        if isinstance(step, Exception):
+            raise step
+        return _FakeResponse(step)
+
+
+class _FakeClient:
+    def __init__(self, script, **kwargs):
+        self.init_kwargs = kwargs
+        self.messages = _FakeMessages(script)
+
+
+def _install_fake_client(monkeypatch, script):
+    """Patch the Anthropic symbol in deep_audit with a fake; return the
+    fake client instance so the test can inspect calls."""
+    holder = {}
+
+    def _factory(**kwargs):
+        client = _FakeClient(script, **kwargs)
+        holder["client"] = client
+        return client
+
+    monkeypatch.setattr(deep_audit, "Anthropic", _factory)
+    monkeypatch.setattr(deep_audit.time, "sleep", lambda *_: None)
+    return holder
+
+
+_GREEN = json.dumps({"verdict": "GREEN", "findings": [],
+                     "summary": "all checks passed"})
+_BUG = json.dumps({"verdict": "BUG", "findings": [
+    {"kind": "CODE", "text": "constant drift", "pick_ref": ""}],
+    "summary": "a constant drifted"})
+
+
+def test_claude_api_audit_returns_green(monkeypatch):
+    """A mocked client returning valid GREEN JSON is parsed through."""
+    _install_fake_client(monkeypatch, [_GREEN])
+    out = deep_audit.claude_api_audit("SPEC TEXT", {"module": "nhl_sog"})
+    assert out["verdict"] == "GREEN"
+    assert out["findings"] == []
+    assert out["summary"]
+
+
+def test_claude_api_audit_returns_bug(monkeypatch):
+    """A mocked client returning BUG JSON is parsed through with findings."""
+    _install_fake_client(monkeypatch, [_BUG])
+    out = deep_audit.claude_api_audit("SPEC TEXT", {"module": "mlb_f5"})
+    assert out["verdict"] == "BUG"
+    assert out["findings"][0]["kind"] == "CODE"
+    assert out["findings"][0]["text"] == "constant drift"
+    assert out["findings"][0]["pick_ref"] == ""
+
+
+def test_claude_api_audit_builds_request_correctly(monkeypatch):
+    """The request carries the spec as a cache-controlled system block, the
+    evidence as the JSON user message, and the Opus model id."""
+    holder = _install_fake_client(monkeypatch, [_GREEN])
+    evidence = {"module": "nhl_sog", "picks": [{"matchup": "A @ B"}]}
+    deep_audit.claude_api_audit("THE SPEC", evidence)
+
+    kwargs = holder["client"].messages.calls[0]
+    assert kwargs["model"] == "claude-opus-4-7"
+    system = kwargs["system"]
+    assert system[0]["text"] == "THE SPEC"
+    assert system[0]["cache_control"] == {"type": "ephemeral"}
+    user_content = kwargs["messages"][0]["content"]
+    assert kwargs["messages"][0]["role"] == "user"
+    assert json.loads(user_content) == evidence
+
+
+def test_claude_api_audit_retries_transient_then_succeeds(monkeypatch):
+    """A transient error on the first call is retried; the second succeeds."""
+    import anthropic
+    transient = anthropic.APITimeoutError(request=mock.Mock())
+    holder = _install_fake_client(monkeypatch, [transient, _GREEN])
+    out = deep_audit.claude_api_audit("SPEC", {"module": "nhl_sog"})
+    assert out["verdict"] == "GREEN"
+    assert len(holder["client"].messages.calls) == 2
+
+
+def test_claude_api_audit_raises_after_retry_budget(monkeypatch):
+    """A persistent transient error raises after the retry budget; the call
+    count equals the budget."""
+    import anthropic
+    transient = anthropic.APITimeoutError(request=mock.Mock())
+    holder = _install_fake_client(monkeypatch, [transient])
+    with pytest.raises(anthropic.APITimeoutError):
+        deep_audit.claude_api_audit("SPEC", {"module": "nhl_sog"})
+    assert len(holder["client"].messages.calls) == deep_audit.AUDIT_MAX_ATTEMPTS
+
+
+def test_claude_api_audit_does_not_retry_bad_request(monkeypatch):
+    """A non-transient 400 raises immediately — no retry."""
+    import anthropic
+    bad = anthropic.BadRequestError(
+        "bad", response=mock.Mock(status_code=400), body=None)
+    holder = _install_fake_client(monkeypatch, [bad])
+    with pytest.raises(anthropic.BadRequestError):
+        deep_audit.claude_api_audit("SPEC", {"module": "nhl_sog"})
+    assert len(holder["client"].messages.calls) == 1
+
+
+def test_claude_api_audit_raises_on_invalid_json(monkeypatch):
+    """A response that is not valid JSON raises (callers fall back)."""
+    _install_fake_client(monkeypatch, ["not json at all"])
+    with pytest.raises(Exception):
+        deep_audit.claude_api_audit("SPEC", {"module": "nhl_sog"})
+
+
+def test_claude_api_audit_raises_on_wrong_shape(monkeypatch):
+    """Valid JSON that does not match the verdict contract raises."""
+    _install_fake_client(monkeypatch, [json.dumps({"verdict": "MAYBE"})])
+    with pytest.raises(Exception):
+        deep_audit.claude_api_audit("SPEC", {"module": "nhl_sog"})

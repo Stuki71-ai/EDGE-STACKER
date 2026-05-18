@@ -13,9 +13,12 @@ _collect so tests can monkeypatch it and never touch the network or the VPS.
 import glob
 import json
 import os
+import time
 from datetime import datetime, timezone
 
+import anthropic
 import requests
+from anthropic import Anthropic
 
 from shared import audit_checks as ac
 
@@ -153,3 +156,115 @@ def gather_evidence(module, result):
     `module` + a fresh `result` (a picks JSON dict, as main.py --json-only
     emits it). Thin wrapper — delegates all work to _collect."""
     return _collect(module, result)
+
+
+# --- Claude-API judgment layer -------------------------------------------
+
+AUDIT_MODEL = "claude-opus-4-7"
+AUDIT_MAX_TOKENS = 16_000
+AUDIT_MAX_ATTEMPTS = 3
+AUDIT_BACKOFF_BASE = 2.0
+
+VERDICT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "verdict": {"type": "string", "enum": ["GREEN", "BUG"]},
+        "findings": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "kind": {"type": "string",
+                             "enum": ["INFRA", "DATA", "CODE"]},
+                    "text": {"type": "string"},
+                    "pick_ref": {"type": "string"},
+                },
+                "required": ["kind", "text", "pick_ref"],
+                "additionalProperties": False,
+            },
+        },
+        "summary": {"type": "string"},
+    },
+    "required": ["verdict", "findings", "summary"],
+    "additionalProperties": False,
+}
+
+
+def _is_transient(exc):
+    """True for failures worth retrying — network/timeout/rate-limit and any
+    5xx server error. 4xx (bad request / auth / permission) are permanent."""
+    if isinstance(exc, (anthropic.APIConnectionError,
+                        anthropic.APITimeoutError,
+                        anthropic.RateLimitError)):
+        return True
+    if isinstance(exc, anthropic.APIStatusError):
+        return getattr(exc, "status_code", 0) >= 500
+    return False
+
+
+def _parse_verdict(text):
+    """Parse the model's text block as the contract JSON, validating shape.
+    Raises ValueError on bad JSON or a wrong shape (callers fall back)."""
+    data = json.loads(text)
+    if not isinstance(data, dict):
+        raise ValueError("verdict is not a JSON object")
+    if data.get("verdict") not in ("GREEN", "BUG"):
+        raise ValueError(f"bad verdict: {data.get('verdict')!r}")
+    if not isinstance(data.get("summary"), str):
+        raise ValueError("missing or non-string summary")
+    findings = data.get("findings")
+    if not isinstance(findings, list):
+        raise ValueError("findings is not a list")
+    for f in findings:
+        if not isinstance(f, dict) or {"kind", "text", "pick_ref"} - f.keys():
+            raise ValueError(f"malformed finding: {f!r}")
+    return data
+
+
+def claude_api_audit(spec, evidence):
+    """Judge `evidence` against the audit `spec` via one Anthropic API call.
+
+    `spec` is the docs/audit-spec.md text — sent as a cache-controlled system
+    prompt so the static spec is cached across fires. `evidence` is the
+    gather_evidence bundle, sent JSON-serialised as the user message. Returns
+    the parsed verdict dict ({"verdict","findings","summary"}).
+
+    Transient failures are retried with exponential backoff up to
+    AUDIT_MAX_ATTEMPTS; any other failure (bad JSON, wrong shape, a 4xx, or an
+    exhausted retry budget) raises — Task 4's orchestrator catches that and
+    falls back to the mechanical audit."""
+    client = Anthropic(max_retries=0)
+    last_exc = None
+    for attempt in range(AUDIT_MAX_ATTEMPTS):
+        try:
+            response = client.messages.create(
+                model=AUDIT_MODEL,
+                max_tokens=AUDIT_MAX_TOKENS,
+                thinking={"type": "adaptive"},
+                system=[{
+                    "type": "text",
+                    "text": spec,
+                    "cache_control": {"type": "ephemeral"},
+                }],
+                output_config={
+                    "effort": "high",
+                    "format": {"type": "json_schema",
+                               "schema": VERDICT_SCHEMA},
+                },
+                messages=[{
+                    "role": "user",
+                    "content": json.dumps(evidence, sort_keys=True,
+                                          default=str),
+                }],
+            )
+            break
+        except Exception as exc:
+            if not _is_transient(exc):
+                raise
+            last_exc = exc
+            if attempt == AUDIT_MAX_ATTEMPTS - 1:
+                raise
+            time.sleep(AUDIT_BACKOFF_BASE ** attempt)
+
+    text = next(b.text for b in response.content if b.type == "text")
+    return _parse_verdict(text)
