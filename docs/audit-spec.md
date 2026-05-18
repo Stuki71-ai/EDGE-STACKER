@@ -267,7 +267,7 @@ no prose before or after, no markdown fences, no commentary:
 
 ```json
 {"verdict": "GREEN" | "BUG",
- "findings": [{"kind": "INFRA" | "DATA" | "CODE", "text": "<what is wrong>", "pick_ref": "<the matchup/player the finding is scoped to, or empty string>"}],
+ "findings": [{"kind": "DATA" | "CODE", "text": "<what is wrong>", "pick_ref": "<the matchup/player the finding is scoped to, or empty string>"}],
  "summary": "<one-paragraph plain-English verdict>"}
 ```
 

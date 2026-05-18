@@ -178,7 +178,7 @@ VERDICT_SCHEMA = {
                 "type": "object",
                 "properties": {
                     "kind": {"type": "string",
-                             "enum": ["INFRA", "DATA", "CODE"]},
+                             "enum": ["DATA", "CODE"]},
                     "text": {"type": "string"},
                     "pick_ref": {"type": "string"},
                 },
