@@ -11,7 +11,8 @@ from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from shared.audit_checks import (Finding, INFRA, DATA, CODE, classify_worst,
-                                  check_picks, recompute_pick, check_infra)
+                                  check_picks, recompute_pick, check_infra,
+                                  recompute_value, _recompute_projection)
 
 
 def test_classify_worst_prefers_code():
@@ -108,6 +109,53 @@ def test_recompute_pick_respects_passed_tolerance():
     findings = _mlb_recompute_offline(_MLB_PICK, tolerance=0.30)
     assert findings == [], (
         f"expected no findings at tolerance 0.30, got {findings}")
+
+
+# ── _recompute_projection shared core (issue 1 — DRY) ──
+#
+# _recompute_projection is the single copy of the recompute math, used by
+# both recompute_value (bare float) and recompute_pick (findings). It
+# returns a (value, failure) tuple and never raises.
+
+
+def _mlb_proj_offline(pick):
+    """Run _recompute_projection('mlb_f5', ...) with every MLB upstream dep
+    mocked so project_total_f5 yields a fixed 4.20."""
+    sched_game = {
+        "away_team": "AWAY", "home_team": "HOME",
+        "away_team_id": 1, "home_team_id": 2,
+        "away_starter_id": 11, "home_starter_id": 22,
+        "venue": "Some Park",
+    }
+    with mock.patch("shared.mlb_data.get_schedule",
+                    return_value=[sched_game]), \
+         mock.patch("shared.mlb_data.get_pitcher_stats",
+                    return_value={"xFIP_30d": 4.0, "hand": "R"}), \
+         mock.patch("shared.mlb_data.get_team_woba_vs_hand",
+                    return_value=0.320), \
+         mock.patch("shared.mlb_data.park_factor", return_value=1.0), \
+         mock.patch("modules.mlb_f5.projections.project_total_f5",
+                    return_value=4.20):
+        return _recompute_projection("mlb_f5", pick)
+
+
+def test_recompute_projection_returns_value_and_no_failure():
+    """A fully-resolvable pick -> (float, None); recompute_value exposes
+    just the float."""
+    value, failure = _mlb_proj_offline(_MLB_PICK)
+    assert value == 4.20
+    assert failure is None
+
+
+def test_recompute_projection_missing_data_returns_none_with_cause():
+    """An unparseable matchup -> (None, ('matchup_unparseable', ...)); the
+    failure cause is carried so recompute_pick can name it in a Finding."""
+    bad = dict(_MLB_PICK, matchup="no-at-sign")
+    value, failure = _recompute_projection("mlb_f5", bad)
+    assert value is None
+    assert failure[0] == "matchup_unparseable"
+    # recompute_value collapses the same failure to a bare None
+    assert recompute_value("mlb_f5", bad) is None
 
 
 # ── check_infra required-files logic ──
