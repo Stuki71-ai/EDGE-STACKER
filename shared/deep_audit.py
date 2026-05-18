@@ -11,6 +11,7 @@ ALL heavy work (git, subprocess, fetchers, recompute, filesystem) lives in
 _collect so tests can monkeypatch it and never touch the network or the VPS.
 """
 import glob
+import json
 import os
 from datetime import datetime, timezone
 
@@ -81,7 +82,6 @@ def _data_fetch_summary(module):
             summary["mlb_fip_constant"] = {"error": str(e)}
 
         try:
-            import json
             r = requests.get(
                 f"https://statsapi.mlb.com/api/v1/teams?sportId=1"
                 f"&season={year}", timeout=20)
@@ -118,15 +118,21 @@ def _collect(module, result):
 
     recompute = []
     for p in picks:
+        # Recompute the bare projection ONCE per pick (recompute_value is a
+        # thin passthrough to the shared _recompute_projection core). Stored
+        # so the Claude judge can run audit-spec Check 5's tolerance
+        # comparison even on a clean pick, where recompute_pick's findings
+        # fire only on drift beyond its internal threshold and yield no
+        # number. recompute_pick still fetches independently for its
+        # findings/comparison logic — eliminating that second fetch would
+        # require changing its public (module, pick, tolerance) contract,
+        # which pipeline.py depends on, so it is left as-is.
+        recomputed_projection = ac.recompute_value(module, p)
         findings = ac.recompute_pick(module, p)
-        # Also capture the bare recomputed projection: recompute_pick's
-        # findings fire ONLY on drift beyond its internal threshold, so a
-        # clean pick yields no number. The Claude judge needs both values
-        # to run audit-spec Check 5's tolerance comparison.
         recompute.append({
             "pick_ref": ac._pick_ref(p),
             "logged_projection": p.get("context", {}).get("projection"),
-            "recomputed_projection": ac.recompute_value(module, p),
+            "recomputed_projection": recomputed_projection,
             "findings": _serialize_findings(findings),
         })
         mechanical += findings

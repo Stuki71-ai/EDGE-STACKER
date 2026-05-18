@@ -377,6 +377,73 @@ def _mlb_game_status(pick):
 RECOMPUTE_TOLERANCE = 0.03
 
 
+def _recompute_projection(module, pick):
+    """Private end-to-end recompute core — the SINGLE copy of the recompute
+    math, shared by recompute_value and recompute_pick.
+
+    Returns a (value, failure) tuple:
+      value   — the bare recomputed projection float, or None if it could
+                not be produced.
+      failure — None on success, otherwise a (cause, detail) tuple naming
+                why the recompute could not produce a number. `cause` is a
+                stable string code; `detail` carries the cause-specific text
+                (player name, matchup, or exception message) that
+                recompute_pick needs to reproduce its per-step Findings.
+
+    This never raises: any exception is collapsed into a ("raised", str(e))
+    failure so both callers stay total.
+    """
+    ctx = pick.get("context", {})
+
+    if module == "nhl_sog":
+        try:
+            from shared import espn_nhl
+            from modules.nhl_sog import projections as nhl_proj
+            player = ctx.get("player", "")
+            eid = espn_nhl.find_espn_player_id(player.strip())
+            if not eid:
+                return None, ("player_unresolvable", player)
+            games = espn_nhl.get_player_gamelog(eid, last_n=None)
+            pr = nhl_proj.project_player_sog(
+                games, nhl_proj.LEAGUE_AVG_SHOTS_AGAINST)
+            if not pr:
+                return None, ("projection_none", player)
+            return pr["projection"], None
+        except Exception as e:
+            return None, ("raised", str(e))
+
+    elif module == "mlb_f5":
+        try:
+            from shared import mlb_data
+            from modules.mlb_f5 import projections as mlb_proj
+            matchup = pick.get("matchup", "")
+            if "@" not in matchup:
+                return None, ("matchup_unparseable", matchup)
+            fire_date = ctx.get("game_date") or \
+                datetime.now(timezone.utc).date().isoformat()
+            sched = {(g["away_team"], g["home_team"]): g
+                     for g in mlb_data.get_schedule(fire_date)}
+            away, home = [s.strip() for s in matchup.split("@", 1)]
+            g = sched.get((away, home))
+            if not g:
+                return None, ("matchup_not_scheduled", (matchup, fire_date))
+            ap = mlb_data.get_pitcher_stats(g["away_starter_id"])
+            hp = mlb_data.get_pitcher_stats(g["home_starter_id"])
+            if not ap or not hp:
+                return None, ("starter_stats_unavailable", matchup)
+            aw = mlb_data.get_team_woba_vs_hand(g["away_team_id"], hp["hand"])
+            hw = mlb_data.get_team_woba_vs_hand(g["home_team_id"], ap["hand"])
+            pf = mlb_data.park_factor(g["venue"])
+            wf = ctx.get("weather_factor", 1.0)
+            value = mlb_proj.project_total_f5(
+                hp["xFIP_30d"], aw, ap["xFIP_30d"], hw, pf, wf)
+            return value, None
+        except Exception as e:
+            return None, ("raised", str(e))
+
+    return None, ("unknown_module", module)
+
+
 def recompute_value(module, pick):
     """Independently recompute one pick's projection end-to-end from raw
     upstream data and return the bare number (float), or None if it cannot
@@ -388,54 +455,7 @@ def recompute_value(module, pick):
     keeps its own findings-producing logic; this helper never returns
     Findings and never raises.
     """
-    ctx = pick.get("context", {})
-
-    if module == "nhl_sog":
-        try:
-            from shared import espn_nhl
-            from modules.nhl_sog import projections as nhl_proj
-            player = ctx.get("player", "")
-            eid = espn_nhl.find_espn_player_id(player.strip())
-            if not eid:
-                return None
-            games = espn_nhl.get_player_gamelog(eid, last_n=None)
-            pr = nhl_proj.project_player_sog(
-                games, nhl_proj.LEAGUE_AVG_SHOTS_AGAINST)
-            if not pr:
-                return None
-            return pr["projection"]
-        except Exception:
-            return None
-
-    elif module == "mlb_f5":
-        try:
-            from shared import mlb_data
-            from modules.mlb_f5 import projections as mlb_proj
-            matchup = pick.get("matchup", "")
-            if "@" not in matchup:
-                return None
-            fire_date = ctx.get("game_date") or \
-                datetime.now(timezone.utc).date().isoformat()
-            sched = {(g["away_team"], g["home_team"]): g
-                     for g in mlb_data.get_schedule(fire_date)}
-            away, home = [s.strip() for s in matchup.split("@", 1)]
-            g = sched.get((away, home))
-            if not g:
-                return None
-            ap = mlb_data.get_pitcher_stats(g["away_starter_id"])
-            hp = mlb_data.get_pitcher_stats(g["home_starter_id"])
-            if not ap or not hp:
-                return None
-            aw = mlb_data.get_team_woba_vs_hand(g["away_team_id"], hp["hand"])
-            hw = mlb_data.get_team_woba_vs_hand(g["home_team_id"], ap["hand"])
-            pf = mlb_data.park_factor(g["venue"])
-            wf = ctx.get("weather_factor", 1.0)
-            return mlb_proj.project_total_f5(
-                hp["xFIP_30d"], aw, ap["xFIP_30d"], hw, pf, wf)
-        except Exception:
-            return None
-
-    return None
+    return _recompute_projection(module, pick)[0]
 
 
 def recompute_pick(module, pick, tolerance=RECOMPUTE_TOLERANCE):
@@ -455,82 +475,62 @@ def recompute_pick(module, pick, tolerance=RECOMPUTE_TOLERANCE):
     ref = _pick_ref(pick)
     ctx = pick.get("context", {})
 
+    # Recompute the projection through the single shared core. `failure`
+    # names the cause when no value could be produced, so the per-step
+    # Findings below stay byte-identical to the old inline implementation.
+    recomp, failure = _recompute_projection(module, pick)
+
     if module == "nhl_sog":
-        try:
-            from shared import espn_nhl
-            from modules.nhl_sog import projections as nhl_proj
-            player = ctx.get("player", "")
-            eid = espn_nhl.find_espn_player_id(player.strip())
-            if not eid:
-                out.append(Finding(DATA, f"NHL recompute: player '{player}' "
+        if failure is not None:
+            cause, detail = failure
+            if cause == "player_unresolvable":
+                out.append(Finding(DATA, f"NHL recompute: player '{detail}' "
                                          f"not resolvable in roster cache",
                                    pick_ref=ref))
-                return out
-            games = espn_nhl.get_player_gamelog(eid, last_n=None)
-            pr = nhl_proj.project_player_sog(
-                games, nhl_proj.LEAGUE_AVG_SHOTS_AGAINST)
-            if not pr:
+            elif cause == "projection_none":
                 out.append(Finding(DATA, f"NHL recompute: projection returned "
-                                         f"None for {player}", pick_ref=ref))
-                return out
-            recomp = pr["projection"]
-            # The recompute uses a league-avg opponent, while the pick used
-            # the real opponent SA (capped 0.85-1.15). So compare against a
-            # plausibility band, not the logged projection.
-            if not (0.3 <= recomp <= 8.0):
-                out.append(Finding(CODE, f"NHL recompute: {player} projection "
-                                         f"{recomp} implausible"))
-        except Exception as e:
-            out.append(Finding(CODE, f"NHL recompute raised: {e}"))
+                                         f"None for {detail}", pick_ref=ref))
+            else:  # raised
+                out.append(Finding(CODE, f"NHL recompute raised: {detail}"))
+            return out
+        # The recompute uses a league-avg opponent, while the pick used
+        # the real opponent SA (capped 0.85-1.15). So compare against a
+        # plausibility band, not the logged projection.
+        player = ctx.get("player", "")
+        if not (0.3 <= recomp <= 8.0):
+            out.append(Finding(CODE, f"NHL recompute: {player} projection "
+                                     f"{recomp} implausible"))
 
     elif module == "mlb_f5":
-        try:
-            from shared import mlb_data
-            from modules.mlb_f5 import projections as mlb_proj
-            matchup = pick.get("matchup", "")
-            logged_proj = ctx.get("projection")
-            fire_date = ctx.get("game_date") or \
-                datetime.now(timezone.utc).date().isoformat()
-            sched = {(g["away_team"], g["home_team"]): g
-                     for g in mlb_data.get_schedule(fire_date)}
-            if "@" not in matchup:
-                out.append(Finding(DATA, f"MLB recompute: matchup '{matchup}' "
+        matchup = pick.get("matchup", "")
+        logged_proj = ctx.get("projection")
+        if failure is not None:
+            cause, detail = failure
+            if cause == "matchup_unparseable":
+                out.append(Finding(DATA, f"MLB recompute: matchup '{detail}' "
                                          f"unparseable", pick_ref=ref))
-                return out
-            away, home = [s.strip() for s in matchup.split("@", 1)]
-            g = sched.get((away, home))
-            if not g:
-                out.append(Finding(DATA, f"MLB recompute: matchup '{matchup}' "
+            elif cause == "matchup_not_scheduled":
+                mu, fire_date = detail
+                out.append(Finding(DATA, f"MLB recompute: matchup '{mu}' "
                                          f"not in schedule for {fire_date}",
                                    pick_ref=ref))
-                return out
-            ap = mlb_data.get_pitcher_stats(g["away_starter_id"])
-            hp = mlb_data.get_pitcher_stats(g["home_starter_id"])
-            if not ap or not hp:
+            elif cause == "starter_stats_unavailable":
                 out.append(Finding(DATA, f"MLB recompute: starter stats "
-                                         f"unavailable for {matchup}",
+                                         f"unavailable for {detail}",
                                    pick_ref=ref))
-                return out
-            aw = mlb_data.get_team_woba_vs_hand(g["away_team_id"], hp["hand"])
-            hw = mlb_data.get_team_woba_vs_hand(g["home_team_id"], ap["hand"])
-            pf = mlb_data.park_factor(g["venue"])
-            # weather_factor is currently always 1.0 in the runner; the pick
-            # records the value it used so the recompute can match it exactly.
-            wf = ctx.get("weather_factor", 1.0)
-            recomp = mlb_proj.project_total_f5(
-                hp["xFIP_30d"], aw, ap["xFIP_30d"], hw, pf, wf)
-            if logged_proj is None:
-                out.append(Finding(DATA, f"MLB recompute: pick has no logged "
-                                         f"projection", pick_ref=ref))
-                return out
-            lp = float(logged_proj)
-            drift = abs(recomp - lp) / lp if lp else 1.0
-            if drift > tolerance:
-                out.append(Finding(CODE, f"MLB recompute: {matchup} logged "
-                                         f"proj {lp} vs recomputed "
-                                         f"{recomp:.2f} — {drift:.1%} drift > "
-                                         f"{tolerance:.0%}"))
-        except Exception as e:
-            out.append(Finding(CODE, f"MLB recompute raised: {e}"))
+            else:  # raised
+                out.append(Finding(CODE, f"MLB recompute raised: {detail}"))
+            return out
+        if logged_proj is None:
+            out.append(Finding(DATA, f"MLB recompute: pick has no logged "
+                                     f"projection", pick_ref=ref))
+            return out
+        lp = float(logged_proj)
+        drift = abs(recomp - lp) / lp if lp else 1.0
+        if drift > tolerance:
+            out.append(Finding(CODE, f"MLB recompute: {matchup} logged "
+                                     f"proj {lp} vs recomputed "
+                                     f"{recomp:.2f} — {drift:.1%} drift > "
+                                     f"{tolerance:.0%}"))
 
     return out
