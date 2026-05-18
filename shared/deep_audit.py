@@ -12,6 +12,7 @@ _collect so tests can monkeypatch it and never touch the network or the VPS.
 """
 import glob
 import json
+import logging
 import os
 import time
 from datetime import datetime, timezone
@@ -21,6 +22,8 @@ import requests
 from anthropic import Anthropic
 
 from shared import audit_checks as ac
+
+logger = logging.getLogger(__name__)
 
 # Repo root is the parent of shared/ — resolve relative to this file so the
 # evidence layer works regardless of the pipeline's cwd.
@@ -276,3 +279,44 @@ def claude_api_audit(spec, evidence):
         raise ValueError("Claude audit response had no text block; "
                          f"stop_reason={response.stop_reason}")
     return _parse_verdict(text)
+
+
+# --- deep_audit orchestrator ---------------------------------------------
+
+AUDIT_SPEC_PATH = os.path.join(REPO_ROOT, "docs", "audit-spec.md")
+
+# Set the first time deep_audit runs without an API key, so a missing key
+# logs a warning once per process instead of spamming every fire.
+_warned_no_key = False
+
+
+def deep_audit(module, result, fallback):
+    """Audit a fresh picks `result` for `module` and return list[Finding].
+
+    Gathers the evidence bundle, sends it to the Claude API for a GREEN/BUG
+    verdict, and maps the verdict's findings to Finding objects. Any failure
+    — no API key, an unreachable API, a malformed verdict, a missing spec
+    file — falls back to the mechanical `fallback(module, result)` audit so
+    the pipeline never misses a night.
+
+    `fallback` is passed in (rather than imported) to avoid a circular
+    import with pipeline.py."""
+    global _warned_no_key
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        if not _warned_no_key:
+            logger.warning("ANTHROPIC_API_KEY unset — deep audit disabled, "
+                           "mechanical fallback")
+            _warned_no_key = True
+        return fallback(module, result)
+
+    try:
+        with open(AUDIT_SPEC_PATH, encoding="utf-8") as f:
+            spec = f.read()
+        evidence = gather_evidence(module, result)
+        verdict = claude_api_audit(spec, evidence)
+        return [ac.Finding(kind=f["kind"], text=f["text"],
+                           pick_ref=f["pick_ref"])
+                for f in verdict["findings"]]
+    except Exception:
+        logger.warning("deep audit unavailable — mechanical fallback")
+        return fallback(module, result)

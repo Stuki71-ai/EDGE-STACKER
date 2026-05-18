@@ -350,3 +350,123 @@ def test_claude_api_audit_raises_on_max_tokens_truncation(monkeypatch):
         deep_audit.claude_api_audit("SPEC", {"module": "nhl_sog"})
     assert "max_tokens" in str(exc.value)
     assert len(holder["client"].messages.calls) == 1
+
+
+# --- deep_audit orchestrator (Task 4) ------------------------------------
+
+from shared.audit_checks import Finding, CODE, DATA
+
+
+def _fallback_factory(result_findings):
+    """Build a fallback callable that records its call args and returns a
+    fixed list[Finding]."""
+    calls = []
+
+    def fallback(module, result):
+        calls.append((module, result))
+        return result_findings
+
+    fallback.calls = calls
+    return fallback
+
+
+def test_deep_audit_green_returns_empty(monkeypatch):
+    """A GREEN verdict from the API → deep_audit returns []."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr(deep_audit, "gather_evidence",
+                        lambda module, result: {"module": module})
+    monkeypatch.setattr(deep_audit, "claude_api_audit",
+                        lambda spec, evidence: {
+                            "verdict": "GREEN", "findings": [],
+                            "summary": "all good"})
+    fallback = _fallback_factory([Finding(CODE, "should not be used")])
+    out = deep_audit.deep_audit("nhl_sog", {"picks": []}, fallback)
+    assert out == []
+    assert fallback.calls == []
+
+
+def test_deep_audit_bug_maps_findings(monkeypatch):
+    """A BUG verdict with two findings → two Finding objects with matching
+    kind/text/pick_ref."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr(deep_audit, "gather_evidence",
+                        lambda module, result: {"module": module})
+    monkeypatch.setattr(deep_audit, "claude_api_audit",
+                        lambda spec, evidence: {
+                            "verdict": "BUG",
+                            "findings": [
+                                {"kind": "CODE", "text": "constant drift",
+                                 "pick_ref": ""},
+                                {"kind": "DATA", "text": "bad line",
+                                 "pick_ref": "A @ B"},
+                            ],
+                            "summary": "two problems"})
+    fallback = _fallback_factory([Finding(CODE, "unused")])
+    out = deep_audit.deep_audit("mlb_f5", {"picks": []}, fallback)
+    assert fallback.calls == []
+    assert len(out) == 2
+    assert all(isinstance(f, Finding) for f in out)
+    assert out[0].kind == CODE
+    assert out[0].text == "constant drift"
+    assert out[0].pick_ref == ""
+    assert out[1].kind == DATA
+    assert out[1].text == "bad line"
+    assert out[1].pick_ref == "A @ B"
+
+
+def test_deep_audit_api_raises_uses_fallback(monkeypatch):
+    """claude_api_audit raising (API unreachable) → deep_audit calls the
+    passed-in fallback and returns ITS result."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr(deep_audit, "gather_evidence",
+                        lambda module, result: {"module": module})
+
+    def boom(spec, evidence):
+        raise RuntimeError("API unreachable")
+
+    monkeypatch.setattr(deep_audit, "claude_api_audit", boom)
+    sentinel = [Finding(DATA, "mechanical finding", pick_ref="A @ B")]
+    fallback = _fallback_factory(sentinel)
+    result = {"picks": [1]}
+    out = deep_audit.deep_audit("nhl_sog", result, fallback)
+    assert out is sentinel
+    assert fallback.calls == [("nhl_sog", result)]
+
+
+def test_deep_audit_malformed_verdict_uses_fallback(monkeypatch):
+    """claude_api_audit returns a structurally broken verdict (a finding with
+    an invalid kind that breaks verdict→Finding mapping) → fallback used."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr(deep_audit, "gather_evidence",
+                        lambda module, result: {"module": module})
+    monkeypatch.setattr(deep_audit, "claude_api_audit",
+                        lambda spec, evidence: {
+                            "verdict": "BUG",
+                            "findings": ["not-a-dict"],
+                            "summary": "broken"})
+    sentinel = [Finding(CODE, "mechanical")]
+    fallback = _fallback_factory(sentinel)
+    result = {"picks": []}
+    out = deep_audit.deep_audit("mlb_f5", result, fallback)
+    assert out is sentinel
+    assert fallback.calls == [("mlb_f5", result)]
+
+
+def test_deep_audit_missing_key_uses_fallback(monkeypatch):
+    """ANTHROPIC_API_KEY absent → deep_audit returns the fallback's result
+    WITHOUT calling gather_evidence/claude_api_audit."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    gather_called = []
+    api_called = []
+    monkeypatch.setattr(deep_audit, "gather_evidence",
+                        lambda module, result: gather_called.append(1))
+    monkeypatch.setattr(deep_audit, "claude_api_audit",
+                        lambda spec, evidence: api_called.append(1))
+    sentinel = [Finding(CODE, "mechanical")]
+    fallback = _fallback_factory(sentinel)
+    result = {"picks": []}
+    out = deep_audit.deep_audit("nhl_sog", result, fallback)
+    assert out is sentinel
+    assert fallback.calls == [("nhl_sog", result)]
+    assert gather_called == []
+    assert api_called == []
