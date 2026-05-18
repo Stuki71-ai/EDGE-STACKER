@@ -11,7 +11,13 @@ from pathlib import Path
 
 REPO = "/root/edge-stacker"
 MAX_ATTEMPTS = 3
-TARGET_ET_HOUR = {"nhl_sog": 16, "mlb_f5": 15}
+# ET fire-hour targets per day-type. MLB fires earlier on weekends (11:30 AM ET
+# -> ET hour 11) to catch the day-game-dominant Sat/Sun slate; weekdays stay at
+# the evening-slate fire (03:00 PM ET -> ET hour 15). NHL is evening-only.
+TARGET_ET_HOUR = {
+    "nhl_sog": {"weekday": 16, "weekend": 16},
+    "mlb_f5":  {"weekday": 15, "weekend": 11},
+}
 WEBHOOK = {
     "nhl_sog": "https://vmi3157940.contaboserver.net/webhook/edge-stacker-nhl",
     "mlb_f5":  "https://vmi3157940.contaboserver.net/webhook/edge-stacker-mlb",
@@ -39,10 +45,12 @@ def setup_logging():
     logger.addHandler(fh)
 
 
-def should_run(module, et_hour):
-    """DST-proof guard: cron fires at two UTC times; only the run landing on the
-    module's target ET hour proceeds."""
-    return et_hour == TARGET_ET_HOUR[module]
+def should_run(module, et_hour, is_weekend):
+    """DST-proof + day-type guard. Cron fires this module at several UTC times;
+    only the fire landing on the module's target ET hour for today's day-type
+    proceeds. is_weekend = the ET day is Saturday or Sunday."""
+    day = "weekend" if is_weekend else "weekday"
+    return et_hour == TARGET_ET_HOUR[module][day]
 
 
 def load_env(path=os.path.join(REPO, ".env")):
@@ -252,10 +260,10 @@ def parse_args(argv=None):
     return parser.parse_args(argv)
 
 
-def _current_et_hour():
-    """Current hour (0-23) in US Eastern — DST-correct via stdlib zoneinfo."""
+def _current_et():
+    """Current America/New_York datetime (for the DST + day-type guard)."""
     from zoneinfo import ZoneInfo
-    return datetime.now(ZoneInfo("America/New_York")).hour
+    return datetime.now(ZoneInfo("America/New_York"))
 
 
 def main(argv=None):
@@ -271,9 +279,10 @@ def main(argv=None):
     logger.info(f"pipeline start: module={module}")
 
     try:
-        if not should_run(module, _current_et_hour()):
-            logger.info("not the target ET hour, exiting (other cron fire "
-                         "handles this module)")
+        et = _current_et()
+        if not should_run(args.module, et.hour, et.weekday() >= 5):   # weekday(): Sat=5, Sun=6
+            logger.info("not the target ET hour for today's day-type, exiting "
+                         "(another cron fire handles this module)")
             return
 
         outcome, result, findings, autofixes = heal_loop(module)

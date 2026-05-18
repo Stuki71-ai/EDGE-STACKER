@@ -7,6 +7,7 @@ redirected to a tmp path so tests never write into the real repo.
 import json
 import os
 import sys
+from datetime import datetime
 from unittest import mock
 
 import pytest
@@ -38,6 +39,12 @@ def _ok_response():
     r = mock.Mock()
     r.text = "Workflow was started"
     return r
+
+
+def _et(hour):
+    """A real America/New_York datetime on a weekday (Wed 2026-05-20) at `hour`.
+    Used to mock pipeline._current_et so .hour and .weekday() both work."""
+    return datetime(2026, 5, 20, hour, 0)   # 2026-05-20 is a Wednesday
 
 
 # ── send() ───────────────────────────────────────────────────────────
@@ -89,7 +96,7 @@ def test_main_send_posts_webhook_and_writes_marker(marker_dir):
     result = {"picks": [{"matchup": "BOS @ NYR"}]}
     with mock.patch("pipeline.heal_loop",
                     return_value=("SEND", result, [], [])), \
-         mock.patch("pipeline._current_et_hour", return_value=16), \
+         mock.patch("pipeline._current_et", return_value=_et(16)), \
          mock.patch("pipeline.load_env"), \
          mock.patch("pipeline.sync") as sync, \
          mock.patch("pipeline.send") as send, \
@@ -108,7 +115,7 @@ def test_main_send_after_autofix_ntfys(marker_dir):
     with mock.patch("pipeline.heal_loop",
                     return_value=("SEND", result, [],
                                   ["infra fix: n8n container down"])), \
-         mock.patch("pipeline._current_et_hour", return_value=15), \
+         mock.patch("pipeline._current_et", return_value=_et(15)), \
          mock.patch("pipeline.load_env"), \
          mock.patch("pipeline.sync"), \
          mock.patch("pipeline.send") as send, \
@@ -127,7 +134,7 @@ def test_main_held_does_not_post_webhook(marker_dir):
     findings = [Finding(CODE, "Constant drift: MIN_EDGE")]
     with mock.patch("pipeline.heal_loop",
                     return_value=("HELD", {"picks": []}, findings, [])), \
-         mock.patch("pipeline._current_et_hour", return_value=16), \
+         mock.patch("pipeline._current_et", return_value=_et(16)), \
          mock.patch("pipeline.load_env"), \
          mock.patch("pipeline.send") as send, \
          mock.patch("pipeline.ntfy") as ntfy:
@@ -145,7 +152,7 @@ def test_main_held_does_not_post_webhook(marker_dir):
 def test_main_crash_writes_crash_marker_and_ntfys(marker_dir):
     with mock.patch("pipeline.heal_loop",
                     side_effect=RuntimeError("main.py timed out")), \
-         mock.patch("pipeline._current_et_hour", return_value=16), \
+         mock.patch("pipeline._current_et", return_value=_et(16)), \
          mock.patch("pipeline.load_env"), \
          mock.patch("pipeline.send") as send, \
          mock.patch("pipeline.ntfy") as ntfy:
@@ -161,9 +168,12 @@ def test_main_crash_writes_crash_marker_and_ntfys(marker_dir):
 
 # ── main(): DST guard ────────────────────────────────────────────────
 def test_main_skips_when_not_target_et_hour(marker_dir):
-    """Off-hour cron fire: should_run is False -> exit early, no work."""
+    """Off-hour cron fire: should_run is False -> exit early, no work.
+
+    Mocked time is a weekday (Wed) at ET hour 9 — off-target for nhl_sog
+    (target 16) so the day-type guard exits before any work."""
     with mock.patch("pipeline.heal_loop") as heal, \
-         mock.patch("pipeline._current_et_hour", return_value=9), \
+         mock.patch("pipeline._current_et", return_value=_et(9)), \
          mock.patch("pipeline.load_env"), \
          mock.patch("pipeline.send") as send, \
          mock.patch("pipeline.ntfy") as ntfy:

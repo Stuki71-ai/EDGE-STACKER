@@ -7,8 +7,12 @@ import pipeline
 
 
 def test_should_run_only_at_target_et_hour():
-    # nhl_sog target = 16 (04:30 PM ET); mlb_f5 target = 15 (03:00 PM ET)
-    assert pipeline.should_run("nhl_sog", et_hour=16) is True
-    assert pipeline.should_run("nhl_sog", et_hour=15) is False
-    assert pipeline.should_run("mlb_f5", et_hour=15) is True
-    assert pipeline.should_run("mlb_f5", et_hour=21) is False
+    # mlb_f5: weekday target = 15 (03:00 PM ET); weekend target = 11 (11:30 AM ET)
+    assert pipeline.should_run("mlb_f5", 15, False) is True    # weekday on-target
+    assert pipeline.should_run("mlb_f5", 11, True) is True     # weekend on-target
+    assert pipeline.should_run("mlb_f5", 15, True) is False    # weekday hour, weekend day
+    assert pipeline.should_run("mlb_f5", 11, False) is False   # weekend hour, weekday day
+    # nhl_sog: target = 16 (04:30 PM ET) for both day-types
+    assert pipeline.should_run("nhl_sog", 16, False) is True
+    assert pipeline.should_run("nhl_sog", 16, True) is True
+    assert pipeline.should_run("nhl_sog", 15, False) is False
